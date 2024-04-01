@@ -5,6 +5,7 @@ import {
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { GraphQLModule } from '@nestjs/graphql';
+import { ApolloServerPluginLandingPageLocalDefault } from '@apollo/server/plugin/landingPage/default';
 
 @Module({
   imports: [
@@ -14,6 +15,8 @@ import { GraphQLModule } from '@nestjs/graphql';
     GraphQLModule.forRoot<ApolloFederationDriverConfig>({
       driver: ApolloFederationDriver,
       autoSchemaFile: true,
+      playground: false,
+      plugins: [ApolloServerPluginLandingPageLocalDefault()],
     }),
   ],
   controllers: [],
