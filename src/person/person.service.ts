@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Person } from './person.types';
+import { CreatePersonInput } from './person.dto';
 
 @Injectable()
 export class PersonService {
@@ -21,5 +22,15 @@ export class PersonService {
 
   findOne(id: number) {
     return this.person.find((person) => person.id === id);
+  }
+
+  create(person: CreatePersonInput): Person {
+    const nextId = this.person.length + 1;
+    const newPerson: Person = {
+      id: nextId,
+      ...person,
+    };
+    this.person.push(newPerson);
+    return newPerson;
   }
 }
