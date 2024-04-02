@@ -8,9 +8,10 @@ services:
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
       POSTGRES_USER: ${DATABASE_USER}
       POSTGRES_DB: ${DATABASE_NAME}
+      POSTGRES_PORT: ${DATABASE_PORT}
       PG_DATA: /var/lib/postgresql/data
     ports:
-      - "4510:5432"
+      - "${POSTGRES_PORT}:5432"
     volumes:
       - constellation-data:/var/lib/postgresql/data
     healthcheck:
