@@ -60,11 +60,19 @@ $ npm run test:cov
 
 ## Prisma
 
-To show all prisma commands
+To show all prisma commands:
+
 ```bash
-# unit tests
 $ npx prisma
 ```
+
+When a new change is added to `schema.prisma` then a new migrate must be created with the following command:
+
+```bash
+$ npm run prisma:migrate some-migration-name
+```
+
+Command above will also generate a new version of prisma client, reflecting changes on the schema and database.
 
 
 ## Support
