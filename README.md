@@ -74,6 +74,12 @@ $ npm run prisma:migrate some-migration-name
 
 Command above will also generate a new version of prisma client, reflecting changes on the schema and database.
 
+For development purposes, following command will wipe out the database connected to this service
+
+```bash
+$ npm run prisma:reset
+```
+
 
 ## Support
 
