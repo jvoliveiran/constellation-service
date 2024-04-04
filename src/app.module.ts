@@ -8,6 +8,7 @@ import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloServerPluginLandingPageLocalDefault } from '@apollo/server/plugin/landingPage/default';
 import { PersonModule } from './person/person.module';
 import { formatError } from './graphql/formatError';
+import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { formatError } from './graphql/formatError';
       plugins: [ApolloServerPluginLandingPageLocalDefault()],
       formatError,
     }),
+    PrismaModule,
     PersonModule,
   ],
   providers: [],

@@ -8,17 +8,19 @@ export class PersonResolver {
   constructor(private personService: PersonService) {}
 
   @Query(() => [Person])
-  getAll(): Person[] {
-    return this.personService.findAll();
+  async getAll(): Promise<Person[]> {
+    return await this.personService.findAll();
   }
 
   @Query(() => Person)
-  getOne(@Args('id', { type: () => Int }) id: number): Person {
-    return this.personService.findOne(id);
+  async getOne(@Args('id', { type: () => Int }) id: number): Promise<Person> {
+    return await this.personService.findOne(id);
   }
 
   @Mutation(() => Person)
-  createPerson(@Args('person') person: CreatePersonInput): Person {
-    return this.personService.create(person);
+  async createPerson(
+    @Args('person') person: CreatePersonInput,
+  ): Promise<Person> {
+    return await this.personService.create(person);
   }
 }
