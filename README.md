@@ -73,3 +73,18 @@ $ npm run prisma:generate
 $ npm i --save-dev prisma@latest
 $ npm i @prisma/client@latest      
 ```
+
+## Monitor and Healthcheck
+
+TBD
+https://docs.nestjs.com/recipes/terminus
+
+## Logging
+
+TBD
+https://www.npmjs.com/package/nest-winston
+
+## Message Queues
+
+TBD
+https://docs.nestjs.com/techniques/queues#queues
