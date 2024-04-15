@@ -19,7 +19,8 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "DOTENV_CONFIG_PATH=.env jest --runInBand --detectOpenHandles --config ./test/jest-e2e.json",
     "prisma:migration": "npx prisma migrate dev --name",
-    "prisma:reset": "npx prisma migrate reset"
+    "prisma:reset": "npx prisma migrate reset",
+    "prisma:ui": "npx prisma studio"
   },
   "dependencies": {
     "@apollo/federation": "^0.38.1",

@@ -59,3 +59,17 @@ For development purposes, following command will wipe out the database connected
 ```bash
 $ npm run prisma:reset
 ```
+
+### Other prisma commands
+
+Loads prisma studion on http://localhost:5555
+```bash
+$ npm run prisma:ui
+```
+
+Upgrade prisma client based on prisma schema. Run lines 2 and 3 in case prisma client is not up to date after running first script.
+```bash
+$ npm run prisma:generate
+$ npm i --save-dev prisma@latest
+$ npm i @prisma/client@latest      
+```
