@@ -76,8 +76,11 @@ $ npm i @prisma/client@latest
 
 ## Monitor and Healthcheck
 
-TBD
-https://docs.nestjs.com/recipes/terminus
+We use @nestjs/terminus in order to provide a health check endpoint that execute following actions:
+- Trigger a http request to google;
+- Check if connection database with Prisma is up;
+
+This endpoint is accessible through route: `/health`
 
 ## Logging
 

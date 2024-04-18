@@ -9,6 +9,7 @@ import { ApolloServerPluginLandingPageLocalDefault } from '@apollo/server/plugin
 import { PersonModule } from './person/person.module';
 import { formatError } from './graphql/formatError';
 import { PrismaModule } from './prisma/prisma.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { PrismaModule } from './prisma/prisma.module';
       plugins: [ApolloServerPluginLandingPageLocalDefault()],
       formatError,
     }),
+    HealthModule,
     PrismaModule,
     PersonModule,
   ],
