@@ -10,6 +10,12 @@ import { PersonModule } from './person/person.module';
 import { formatError } from './graphql/formatError';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
+import {
+  utilities as nestWinstonModuleUtilities,
+  WinstonModule,
+} from 'nest-winston';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import * as winston from 'winston';
 
 @Module({
   imports: [
@@ -24,6 +30,25 @@ import { HealthModule } from './health/health.module';
       playground: false,
       plugins: [ApolloServerPluginLandingPageLocalDefault()],
       formatError,
+    }),
+    WinstonModule.forRoot({
+      level: 'debug',
+      transports: [
+        new winston.transports.Console({
+          debugStdout: true,
+          format: winston.format.combine(
+            winston.format.timestamp(),
+            winston.format.ms(),
+            nestWinstonModuleUtilities.format.nestLike(
+              'Constellation Service',
+              {
+                colors: true,
+                prettyPrint: true,
+              },
+            ),
+          ),
+        }),
+      ],
     }),
     HealthModule,
     PrismaModule,

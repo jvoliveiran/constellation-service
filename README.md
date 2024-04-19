@@ -94,8 +94,17 @@ This endpoint is accessible through route: `/health`
 
 ## Logging
 
-TBD
-https://www.npmjs.com/package/nest-winston
+Wiston logger replaces NestJS original logger implementation
+
+```typescript
+// Injecting loggers via constructor
+@Inject(WINSTON_MODULE_NEST_PROVIDER) private readonly logger: Logger
+
+// Logging message, which has type any
+this.logger.log('Some log message')
+```
+
+Docs: https://www.npmjs.com/package/nest-winston
 
 ## Message Queues
 
