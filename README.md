@@ -25,6 +25,16 @@ $ npm run start:dev
 $ npm run start:prod
 ```
 
+## Running the app with Docker
+
+```bash
+# Create docker image
+$ docker build -t constellation-service .
+
+# Run a container with image created
+$ docker run -p 3000:3000 constellation-service
+```
+
 ## Test
 
 ```bash
