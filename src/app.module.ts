@@ -14,7 +14,6 @@ import {
   utilities as nestWinstonModuleUtilities,
   WinstonModule,
 } from 'nest-winston';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import * as winston from 'winston';
 
 @Module({
