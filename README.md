@@ -108,5 +108,38 @@ Docs: https://www.npmjs.com/package/nest-winston
 
 ## Message Queues
 
-TBD
-https://docs.nestjs.com/techniques/queues#queues
+Register new topics at modules level, adding the following:
+```typescript
+ imports: [BullModule.registerQueue({ name: 'topic-name' })],
+```
+
+Then, new messages can be produced as part of existing services, like so:
+```typescript
+  constructor(
+    @InjectQueue('topic-name')
+    private readonly producer: Queue
+  )
+  ...
+  someFunction() {
+    ...
+    const job = await producer.add('message-key', { foo: 'bar' });
+    ...
+  }
+```
+
+Consumer for messages published usually goes in a dedicated file per topic:
+```typescript
+@Processor('topic-name')
+export class ExampleConsumer {
+  constructor() {}
+
+  @Process('message-key')
+  async responder(job: Job<unknown>) {
+    const data = job.data;
+    ...
+    return {}; //or data, or anything
+  }
+}
+```
+
+Docs: https://docs.nestjs.com/techniques/queues#queues
