@@ -3,7 +3,7 @@ import {
   ApolloFederationDriverConfig,
 } from '@nestjs/apollo';
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloServerPluginLandingPageLocalDefault } from '@apollo/server/plugin/landingPage/default';
 import { PersonModule } from './person/person.module';
@@ -15,6 +15,7 @@ import {
   WinstonModule,
 } from 'nest-winston';
 import * as winston from 'winston';
+import { BullModule } from '@nestjs/bull';
 
 @Module({
   imports: [
@@ -48,6 +49,17 @@ import * as winston from 'winston';
           ),
         }),
       ],
+    }),
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        redis: {
+          host: configService.get('REDIS_HOST'),
+          port: configService.get('REDIS_PORT'),
+          password: configService.get('REDIS_PASSWORD'),
+        },
+      }),
+      inject: [ConfigService],
     }),
     HealthModule,
     PrismaModule,

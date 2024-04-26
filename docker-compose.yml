@@ -18,6 +18,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+  redis:
+    image: redis:7.2
+    ports:
+      - "${REDIS_PORT}:6379"
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
 volumes:
   constellation-data:
-
+  redis_data:
