@@ -1,0 +1,23 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+input CreatePersonInput {
+  age: Int!
+  name: String!
+}
+
+type Mutation {
+  createPerson(person: CreatePersonInput!): Person!
+}
+
+type Person {
+  age: Int!
+  id: Int!
+  name: String!
+}
+
+type Query {
+  getAll: [Person!]!
+  getOne(id: Int!): Person!
+}

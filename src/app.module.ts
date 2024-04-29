@@ -16,6 +16,7 @@ import {
 } from 'nest-winston';
 import * as winston from 'winston';
 import { BullModule } from '@nestjs/bull';
+import { join } from 'path';
 
 @Module({
   imports: [
@@ -26,8 +27,11 @@ import { BullModule } from '@nestjs/bull';
       driver: ApolloFederationDriver,
       autoSchemaFile: {
         federation: 2,
+        path: join(process.cwd(), 'src/schema.gql'),
       },
       playground: false,
+      sortSchema: true,
+      introspection: true,
       plugins: [ApolloServerPluginLandingPageLocalDefault()],
       formatError,
     }),
