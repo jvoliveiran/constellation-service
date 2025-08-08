@@ -2,144 +2,225 @@
   <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="200" alt="Nest Logo" /></a>
 </p>
 
-## Description
+## Constellation Service
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+NestJS GraphQL subgraph for an Apollo Federation v2 architecture. Provides a `Person` entity and supporting APIs, with Prisma (PostgreSQL), Bull (Redis) for background jobs, health checks, and structured logging via Winston.
 
-## Installation
+### Stack
+- **Runtime**: Node.js 20 (see `.nvmrc`)
+- **Framework**: NestJS 10
+- **GraphQL**: Apollo Federation v2 (`@nestjs/apollo`, `@nestjs/graphql`)
+- **DB/ORM**: PostgreSQL + Prisma
+- **Queues**: Bull + Redis
+- **Logging**: `nest-winston`
+- **Health**: `@nestjs/terminus`
 
+## Getting started
+
+### Prerequisites
+- Node 20 (recommended: `nvm use`)
+- Docker (optional, for Postgres/Redis via `docker-compose`)
+
+### Install
 ```bash
-$ npm install
+npm install
 ```
 
-## Running the app
+### Environment
+Create a `.env` in the project root. Example:
+```env
+# Service
+SERVICE_PORT=3000
 
+# Database (used by prisma/schema.prisma via DATABASE_URL)
+DATABASE_USER=postgres
+DATABASE_PASSWORD=postgres
+DATABASE_NAME=constellation
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+DATABASE_URL=postgresql://${DATABASE_USER}:${DATABASE_PASSWORD}@${DATABASE_HOST}:${DATABASE_PORT}/${DATABASE_NAME}?schema=public
+
+# Redis (Bull)
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+```
+
+### Development
 ```bash
-# development
-$ npm run start
+# Start Postgres and Redis locally (uses docker-compose and your .env)
+npm run dev:up
 
-# watch mode
-$ npm run start:dev
+# Run the service in watch mode
+npm run dev
 
-# production mode
-$ npm run start:prod
+# Stop Postgres and Redis containers
+npm run dev:down
 ```
+Service runs on `http://localhost:${SERVICE_PORT || 3000}`.
 
-## Running the app with Docker
+### GraphQL
+- Endpoint: `/graphql`
+- Federation: enabled (v2). Entities use `@key` directive. See generated SDL at `src/schema.gql`.
+- Introspection and Apollo landing page are enabled in development.
 
-```bash
-# Create docker image
-$ docker build -t constellation-service .
+Example operations:
+```graphql
+# Query all people
+query {
+  getAll { id name age }
+}
 
-# Run a container with image created
-$ docker run -p 3000:3000 constellation-service
-```
+# Query one person
+query {
+  getOne(id: 1) { id name age }
+}
 
-## Test
-
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
-```
-
-## Prisma
-
-To show all prisma commands:
-
-```bash
-$ npx prisma
-```
-
-When a new change is added to `schema.prisma` then a new migrate must be created with the following command:
-
-```bash
-$ npm run prisma:migrate some-migration-name
-```
-
-Command above will also generate a new version of prisma client, reflecting changes on the schema and database.
-
-For development purposes, following command will wipe out the database connected to this service
-
-```bash
-$ npm run prisma:reset
-```
-
-### Other prisma commands
-
-Loads prisma studion on http://localhost:5555
-```bash
-$ npm run prisma:ui
-```
-
-Upgrade prisma client based on prisma schema. Run lines 2 and 3 in case prisma client is not up to date after running first script.
-```bash
-$ npm run prisma:generate
-$ npm i --save-dev prisma@latest
-$ npm i @prisma/client@latest      
-```
-
-## Monitor and Healthcheck
-
-We use @nestjs/terminus in order to provide a health check endpoint that execute following actions:
-- Trigger a http request to google;
-- Check if connection database with Prisma is up;
-
-This endpoint is accessible through route: `/health`
-
-## Logging
-
-Wiston logger replaces NestJS original logger implementation
-
-```typescript
-// Injecting loggers via constructor
-@Inject(WINSTON_MODULE_NEST_PROVIDER) private readonly logger: Logger
-
-// Logging message, which has type any
-this.logger.log('Some log message')
-```
-
-Docs: https://www.npmjs.com/package/nest-winston
-
-## Message Queues
-
-Register new topics at modules level, adding the following:
-```typescript
- imports: [BullModule.registerQueue({ name: 'topic-name' })],
-```
-
-Then, new messages can be produced as part of existing services, like so:
-```typescript
-  constructor(
-    @InjectQueue('topic-name')
-    private readonly producer: Queue
-  )
-  ...
-  someFunction() {
-    ...
-    const job = await producer.add('message-key', { foo: 'bar' });
-    ...
-  }
-```
-
-Consumer for messages published usually goes in a dedicated file per topic:
-```typescript
-@Processor('topic-name')
-export class ExampleConsumer {
-  constructor() {}
-
-  @Process('message-key')
-  async responder(job: Job<unknown>) {
-    const data = job.data;
-    ...
-    return {}; //or data, or anything
+# Create a person
+mutation {
+  createPerson(person: { name: "Ada", age: 36 }) {
+    id
+    name
+    age
   }
 }
 ```
 
-Docs: https://docs.nestjs.com/techniques/queues#queues
+### Federation notes
+- Subgraph is configured with `ApolloFederationDriver` and `autoSchemaFile` set to federation 2.
+- Entity example: `Person` is annotated with `@key(fields: "id")`. Reference resolution is implemented via `resolveReference` in `PersonResolver`.
+- Gateways (e.g., Apollo Router) can fetch SDL from `/graphql` for composition.
+
+## Prisma
+- Prisma schema: `prisma/schema.prisma`
+- DB URL: `DATABASE_URL` from `.env`
+
+Common workflows:
+```bash
+# Create a new migration and update client
+echo "your-migration-name" | xargs npm run prisma:migration
+
+# Reset database and re-apply migrations (DANGEROUS)
+npm run prisma:reset
+
+# Open Prisma Studio
+npm run prisma:ui
+
+# Regenerate Prisma Client (if needed)
+npx prisma generate
+```
+
+## Queues (Bull)
+- Redis connection is configured via `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`.
+- The `person` queue is registered in `PersonModule`.
+- On `createPerson`, a `create-person` job is enqueued; `PersonConsumer` handles it.
+
+Register a queue in a module:
+```ts
+import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bull';
+
+@Module({
+  imports: [BullModule.registerQueue({ name: 'topic-name' })],
+})
+export class SomeModule {}
+```
+
+Produce a message from a service:
+```ts
+import { InjectQueue } from '@nestjs/bull';
+import { Queue } from 'bull';
+
+constructor(@InjectQueue('topic-name') private readonly producer: Queue) {}
+
+async someFunction() {
+  await this.producer.add('message-key', { foo: 'bar' });
+}
+```
+
+Consume messages:
+```ts
+import { Processor, Process } from '@nestjs/bull';
+import { Job } from 'bull';
+
+@Processor('topic-name')
+export class ExampleConsumer {
+  @Process('message-key')
+  async responder(job: Job<unknown>) {
+    return job.data;
+  }
+}
+```
+
+Example in this service:
+```ts
+// Producer (in PersonService)
+await this.personQueue.add('create-person', person);
+
+// Consumer (in PersonConsumer)
+@Process('create-person')
+async personCreatedResponder(job: Job<unknown>) {
+  return job.data;
+}
+```
+
+See also: [NestJS Queues docs](https://docs.nestjs.com/techniques/queues#queues)
+
+## Health check
+- `GET /health` runs:
+  - HTTP ping to `https://google.com`
+  - Prisma DB connectivity check
+
+## Logging
+Winston replaces the default Nest logger. Inject and use:
+```ts
+// Inject in your class
+@Inject(WINSTON_MODULE_NEST_PROVIDER) private readonly logger: Logger;
+
+// Usage
+this.logger.log('Some log message');
+```
+Log level is set to `debug` by default. See `WinstonModule.forRoot` in `src/app.module.ts`.
+
+## Testing
+```bash
+# unit tests
+npm run test
+
+# e2e tests
+npm run test:e2e
+
+# coverage
+npm run test:cov
+```
+
+## Docker
+### Build and run the service image
+```bash
+# Build (note lowercase dockerfile name)
+docker build -f dockerfile -t constellation-service .
+
+# Run with your .env
+docker run --env-file .env -p 3000:3000 constellation-service
+```
+
+### Local infra (recommended for dev)
+Use `docker-compose` to spin up Postgres and Redis (ports and creds read from `.env`):
+```bash
+npm run dev:up
+# ... work on the app
+npm run dev:down
+```
+
+## Project structure (high-level)
+- `src/app.module.ts`: App wiring (GraphQL federation, Prisma, Bull, health, logging)
+- `src/person/*`: `Person` entity, resolver, service, queue consumer
+- `src/graphql/*`: GraphQL helpers (error formatting, types)
+- `src/prisma/*`: Prisma module/service
+- `src/health/*`: Health endpoints
+- `prisma/schema.prisma`: Prisma schema
+
+## Notes
+- Generated SDL: `src/schema.gql` (do not edit directly)
+- Node version: defined in `.nvmrc`
+- Default service port: `SERVICE_PORT` (falls back to 3000)
