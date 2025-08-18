@@ -1,0 +1,24 @@
+{
+    "files": {
+      "package.json": {
+        "type": "json",
+        "variables": ["projectName", "projectDescription", "author"]
+      },
+      "README.md": {
+        "type": "markdown",
+        "variables": ["projectName", "projectDescription", "author"]
+      }
+    },
+    "ignore": [
+      "scripts",
+      "template.engine.json",
+      "node_modules",
+      ".next",
+      ".git",
+      ".swc",
+      ".cursor",
+      "dist",
+      "build",
+      "coverage"
+    ]
+  } 
