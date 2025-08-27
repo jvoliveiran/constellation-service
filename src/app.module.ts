@@ -43,13 +43,10 @@ import { join } from 'path';
           format: winston.format.combine(
             winston.format.timestamp(),
             winston.format.ms(),
-            nestWinstonModuleUtilities.format.nestLike(
-              'Constellation Service',
-              {
-                colors: true,
-                prettyPrint: true,
-              },
-            ),
+            nestWinstonModuleUtilities.format.nestLike('{{projectName}}', {
+              colors: true,
+              prettyPrint: true,
+            }),
           ),
         }),
       ],

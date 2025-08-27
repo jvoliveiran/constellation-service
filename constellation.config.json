@@ -7,6 +7,14 @@
       "README.md": {
         "type": "markdown",
         "variables": ["projectName", "projectDescription", "author"]
+      },
+      "src/app.module.ts": {
+        "type": "typescript",
+        "variables": ["projectName"]
+      },
+      "docker-compose.yml": {
+        "type": "yaml",
+        "variables": ["projectName"]
       }
     },
     "ignore": [

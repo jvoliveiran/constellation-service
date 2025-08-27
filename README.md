@@ -2,7 +2,9 @@
   <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="200" alt="Nest Logo" /></a>
 </p>
 
-## Constellation Service
+## {{projectName}}
+
+{{projectDescription}}
 
 NestJS GraphQL subgraph for an Apollo Federation v2 architecture. Provides a `Person` entity and supporting APIs, with Prisma (PostgreSQL), Bull (Redis) for background jobs, health checks, and structured logging via Winston.
 
@@ -35,7 +37,7 @@ SERVICE_PORT=3000
 # Database (used by prisma/schema.prisma via DATABASE_URL)
 DATABASE_USER=postgres
 DATABASE_PASSWORD=postgres
-DATABASE_NAME=constellation
+DATABASE_NAME={{projectName}}
 DATABASE_HOST=localhost
 DATABASE_PORT=5432
 DATABASE_URL=postgresql://${DATABASE_USER}:${DATABASE_PASSWORD}@${DATABASE_HOST}:${DATABASE_PORT}/${DATABASE_NAME}?schema=public
