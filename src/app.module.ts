@@ -10,6 +10,7 @@ import { PersonModule } from './person/person.module';
 import { formatError } from './graphql/formatError';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
+import { TelemetryModule } from './telemetry/telemetry.module';
 import {
   utilities as nestWinstonModuleUtilities,
   WinstonModule,
@@ -17,6 +18,7 @@ import {
 import * as winston from 'winston';
 import { BullModule } from '@nestjs/bull';
 import { join } from 'path';
+import { trace } from '@opentelemetry/api';
 
 @Module({
   imports: [
@@ -43,6 +45,15 @@ import { join } from 'path';
           format: winston.format.combine(
             winston.format.timestamp(),
             winston.format.ms(),
+            winston.format.printf((info) => {
+              const activeSpan = trace.getActiveSpan();
+              if (activeSpan) {
+                const spanContext = activeSpan.spanContext();
+                info.traceId = spanContext.traceId;
+                info.spanId = spanContext.spanId;
+              }
+              return JSON.stringify(info);
+            }),
             nestWinstonModuleUtilities.format.nestLike('{{projectName}}', {
               colors: true,
               prettyPrint: true,
@@ -65,6 +76,7 @@ import { join } from 'path';
     HealthModule,
     PrismaModule,
     PersonModule,
+    TelemetryModule,
   ],
   providers: [],
 })
