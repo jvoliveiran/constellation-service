@@ -6,8 +6,10 @@ This document explains how OpenTelemetry has been configured in this NestJS appl
 
 ### 1. Automatic Instrumentation
 - **HTTP requests/responses** - All incoming and outgoing HTTP requests are automatically traced
+  - ⚡ **Smart filtering:** Ignores `/metrics`, `/health`, static assets, and favicon requests
 - **GraphQL operations** - GraphQL queries, mutations, and subscriptions are instrumented
 - **Database queries** - PostgreSQL queries through Prisma are automatically traced
+  - 🗄️ **Deep database visibility:** Individual SQL queries, connection times, and Prisma operations
 - **Redis operations** - Bull queue operations and Redis commands are traced
 - **Winston logging** - Logs are automatically correlated with traces
 
@@ -46,6 +48,7 @@ npm run dev
 
 ### 4. View Traces
 - Open Jaeger UI: http://localhost:16686
+- Raw metrics http://localhost:9464/metrics
 - Select "constellation-service" from the service dropdown
 - Click "Find Traces" to see collected traces
 
@@ -95,6 +98,7 @@ query {
 ```
 
 ### What You'll See in Jaeger
+Jaeger UI: http://localhost:16686 (traces)
 
 1. **HTTP spans** for incoming GraphQL requests
 2. **GraphQL spans** for query/mutation execution

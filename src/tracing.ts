@@ -12,6 +12,7 @@ import { GraphQLInstrumentation } from '@opentelemetry/instrumentation-graphql';
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
 import { ExpressInstrumentation } from '@opentelemetry/instrumentation-express';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { PrismaInstrumentation } from '@prisma/instrumentation';
 
 const traceExporter = new OTLPTraceExporter({
   url:
@@ -64,6 +65,23 @@ const sdk = new NodeSDK({
     }),
     new HttpInstrumentation({
       enabled: true,
+      // Ignore metrics endpoint and health checks to reduce noise
+      ignoreIncomingRequestHook: (req) => {
+        const url = req.url || '';
+        return (
+          url.includes('/metrics') ||
+          url.includes('/health') ||
+          url.includes('/favicon.ico') ||
+          url.includes('/robots.txt') ||
+          url.startsWith('/_next/') || // Next.js assets (if used)
+          url.startsWith('/static/') || // Static assets
+          url.endsWith('.js') ||
+          url.endsWith('.css') ||
+          url.endsWith('.png') ||
+          url.endsWith('.jpg') ||
+          url.endsWith('.svg')
+        );
+      },
       // Capture request/response headers (be careful with sensitive data)
       requestHook: (span, request) => {
         if ('getHeader' in request && typeof request.getHeader === 'function') {
@@ -77,6 +95,7 @@ const sdk = new NodeSDK({
     new ExpressInstrumentation({
       enabled: true,
     }),
+    new PrismaInstrumentation(),
   ],
 });
 
@@ -84,6 +103,10 @@ const sdk = new NodeSDK({
 sdk.start();
 
 console.log('OpenTelemetry tracing initialized');
+console.log('Loaded instrumentations:');
+console.log('- PrismaInstrumentation: enabled');
+console.log('- PostgreSQL (pg): enabled via auto-instrumentations');
+console.log('- HTTP, GraphQL, NestJS, Winston, Express: enabled');
 
 // Graceful shutdown
 process.on('SIGTERM', () => {

@@ -5,13 +5,14 @@
  * Run this after starting the application and Jaeger
  */
 
-import { request } from 'http';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { request } = require('http');
 
 // GraphQL mutation to create a person
 const createPersonMutation = {
   query: `
     mutation CreatePerson($input: CreatePersonInput!) {
-      createPerson(personInput: $input) {
+      createPerson(person: $input) {
         id
         name
         age
@@ -30,7 +31,7 @@ const createPersonMutation = {
 const getAllPeopleQuery = {
   query: `
     query GetAllPeople {
-      people {
+      getAll {
         id
         name
         age
@@ -104,7 +105,7 @@ async function testTelemetry() {
     if (queryResult.errors) {
       console.error('❌ Error querying people:', queryResult.errors);
     } else {
-      console.log('✅ People retrieved:', queryResult.data.people);
+      console.log('✅ People retrieved:', queryResult.data.getAll);
     }
 
     console.log('\n🎉 Test completed successfully!');
@@ -117,7 +118,8 @@ async function testTelemetry() {
     console.log('   2. Click "Find Traces" to see the generated traces');
     console.log('   3. Look for spans like:');
     console.log('      - HTTP POST /graphql');
-    console.log('      - GraphQL operations');
+    console.log('      - GraphQL createPerson');
+    console.log('      - GraphQL getAll');
     console.log('      - PersonService.create');
     console.log('      - PersonService.findAll');
     console.log('      - Database operations');
