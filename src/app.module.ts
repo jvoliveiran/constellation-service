@@ -17,6 +17,7 @@ import {
 import * as winston from 'winston';
 import { BullModule } from '@nestjs/bull';
 import { join } from 'path';
+import { otelTransport } from './monitoring/tracer';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { join } from 'path';
             }),
           ),
         }),
+        otelTransport,
       ],
     }),
     BullModule.forRootAsync({
