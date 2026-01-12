@@ -81,8 +81,8 @@ const metricReader = new PeriodicExportingMetricReader({
 const logProcessor = new BatchLogRecordProcessor(logExporter);
 
 const resource = resourceFromAttributes({
-  [ATTR_SERVICE_NAME]: process.env['OTEL_SERVICE_NAME'] ?? 'mentoria-service',
-  'service.namespace': process.env['OTEL_SERVICE_NAMESPACE'] ?? 'mentoria',
+  [ATTR_SERVICE_NAME]: process.env['OTEL_SERVICE_NAME'] ?? 'constellation-service',
+  'service.namespace': process.env['OTEL_SERVICE_NAMESPACE'] ?? 'constellation',
   [ATTR_SERVICE_VERSION]: process.env['OTEL_SERVICE_VERSION'] ?? '1.0.0',
   'deployment.environment':
     process.env['DEPLOYMENT_ENVIRONMENT'] ??
@@ -116,7 +116,7 @@ const sdk = new NodeSDK({
       logHook: (_span, record) => {
         record['resource.service.name'] =
           resource.attributes[ATTR_SERVICE_NAME];
-        record['resource.service.namespace'] = 'mentoria';
+        record['resource.service.namespace'] = 'constellation';
         record['resource.service.version'] = '1.0.0';
         record['resource.deployment.environment'] = 'production';
       },

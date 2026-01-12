@@ -1,0 +1,47 @@
+# AWS Configuration
+aws_region = "us-east-1"
+
+# Application Image (optional - uses latest from ECR if not set)
+# app_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app-service:v1.0.0"
+
+# Database Configuration
+db_name     = "my-app"
+db_username = "admin"
+db_password = "your-secure-database-password"
+
+# Database sizing (adjust based on needs)
+db_instance_class    = "db.t3.micro"
+db_allocated_storage = 20
+
+# Application Secrets (auto-create mode)
+# These will be stored in AWS Parameter Store and injected as environment variables
+# Pass as JSON string - will be decoded by Terraform
+app_secrets = "{\"REDIS_PASSWORD\":\"your-redis-password\",\"BACKOFFICE_SECRET_KEY\":\"your-backoffice-secret\",\"AWS_ACCESS_KEY_ID\":\"your-ses-access-key\",\"AWS_SECRET_ACCESS_KEY\":\"your-ses-secret-key\",\"OTLP_AUTH_TOKEN\":\"your-grafana-cloud-token\"}"
+
+# Environment Variables (non-sensitive)
+container_environment_vars = {
+  NODE_ENV             = "production"
+  LOG_LEVEL            = "info"
+  SERVICE_PORT         = "3000"
+  REDIS_HOST           = "your-redis-host"
+  REDIS_PORT           = "6379"
+  FRONTEND_ORIGINS     = "https://your-frontend-domain.com"
+  AWS_REGION           = "us-east-1"
+  AWS_SES_FROM_EMAIL   = "noreply@your-domain.co"
+  OTEL_SERVICE_NAME    = "my-app-service"
+  OTEL_SERVICE_VERSION = "1.0.0"
+  OTLP_ENDPOINT        = "https://otlp-gateway-prod-us-east-0.grafana.net/otlp"
+}
+
+# ECS Deployment Configuration
+skip_ecs_deployment = false
+
+# Resource Configuration
+task_cpu                = 512
+task_memory             = 1024
+desired_count           = 2
+enable_fargate_spot     = true
+fargate_spot_percentage = 50
+
+# Health Check
+health_check_path = "/health"
