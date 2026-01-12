@@ -81,7 +81,8 @@ const metricReader = new PeriodicExportingMetricReader({
 const logProcessor = new BatchLogRecordProcessor(logExporter);
 
 const resource = resourceFromAttributes({
-  [ATTR_SERVICE_NAME]: process.env['OTEL_SERVICE_NAME'] ?? 'constellation-service',
+  [ATTR_SERVICE_NAME]:
+    process.env['OTEL_SERVICE_NAME'] ?? 'constellation-service',
   'service.namespace': process.env['OTEL_SERVICE_NAMESPACE'] ?? 'constellation',
   [ATTR_SERVICE_VERSION]: process.env['OTEL_SERVICE_VERSION'] ?? '1.0.0',
   'deployment.environment':
