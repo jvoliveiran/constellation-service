@@ -15,6 +15,22 @@
       "docker-compose.yml": {
         "type": "yaml",
         "variables": ["projectName"]
+      },
+      "terraform/main.tf": {
+        "type": "terraform",
+        "variables": ["projectName"]
+      },
+      "terraform/variables.tf": {
+        "type": "terraform",
+        "variables": ["projectName"]
+      },
+      "terraform/bootstrap/outputs.tf": {
+        "type": "terraform",
+        "variables": ["projectName"]
+      },
+      "terraform/bootstrap/variables.tf": {
+        "type": "terraform",
+        "variables": ["projectName"]
       }
     },
     "ignore": [
