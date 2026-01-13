@@ -11,6 +11,7 @@ import { PersonService } from './person.service';
 import { CreatePersonInput } from './person.dto';
 import { Inject, Logger } from '@nestjs/common';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
+import { Public } from '../graphql/decorators/public.decorator';
 
 @Resolver('Person')
 export class PersonResolver {
@@ -20,6 +21,7 @@ export class PersonResolver {
     private readonly logger: Logger,
   ) {}
 
+  @Public()
   @Query(() => [Person])
   async getAll(): Promise<Person[]> {
     return await this.personService.findAll();

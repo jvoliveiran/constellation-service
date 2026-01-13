@@ -15,8 +15,14 @@ export const formatError = (err: GQLError): GraphQLFormattedError => {
       statusCode: 500,
       message: ['Server internal error'],
     };
+
+  // Handle both string and array messages
+  const errorMessage = Array.isArray(originalError.message)
+    ? originalError.message[0]
+    : originalError.message;
+
   return {
-    message: `${originalError.error} (${originalError.statusCode}): ${originalError.message[0]}`,
+    message: `${originalError.error} (${originalError.statusCode}): ${errorMessage}`,
     extensions,
   };
 };

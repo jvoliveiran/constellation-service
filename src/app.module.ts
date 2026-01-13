@@ -18,6 +18,15 @@ import * as winston from 'winston';
 import { BullModule } from '@nestjs/bull';
 import { join } from 'path';
 import { otelTransport } from './monitoring/tracer';
+import { extendSchema, parse } from 'graphql';
+import {
+  PublicDirective,
+  PrivateDirective,
+} from './graphql/directives/access-control.directive';
+import { federationDirectiveExtensions } from './graphql/directives/schema-extension';
+import { JwtModule } from '@nestjs/jwt';
+import { APP_GUARD } from '@nestjs/core';
+import { JwtAuthGuard } from './graphql/guards/jwt-auth.guard';
 
 @Module({
   imports: [
@@ -35,6 +44,12 @@ import { otelTransport } from './monitoring/tracer';
       introspection: true,
       plugins: [ApolloServerPluginLandingPageLocalDefault()],
       formatError,
+      buildSchemaOptions: {
+        directives: [PublicDirective, PrivateDirective],
+      },
+      transformSchema: (schema) => {
+        return extendSchema(schema, parse(federationDirectiveExtensions));
+      },
     }),
     WinstonModule.forRoot({
       level: 'debug',
@@ -64,10 +79,19 @@ import { otelTransport } from './monitoring/tracer';
       }),
       inject: [ConfigService],
     }),
+    JwtModule.register({
+      secret: process.env.JWT_SECRET || 'your-secret-key-change-in-production',
+      signOptions: { expiresIn: '1h' },
+    }),
     HealthModule,
     PrismaModule,
     PersonModule,
   ],
-  providers: [],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+  ],
 })
 export class AppModule {}

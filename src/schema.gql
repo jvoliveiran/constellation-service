@@ -1,0 +1,29 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+"""Marks a field or type as requiring authentication (default behavior)"""
+directive @private on FIELD_DEFINITION | OBJECT
+
+"""Marks a field or type as publicly accessible without authentication"""
+directive @public on FIELD_DEFINITION | OBJECT
+
+input CreatePersonInput {
+  age: Int!
+  name: String!
+}
+
+type Mutation {
+  createPerson(person: CreatePersonInput!): Person!
+}
+
+type Person {
+  age: Int!
+  id: Int!
+  name: String!
+}
+
+type Query {
+  getAll: [Person!]!
+  getOne(id: Int!): Person!
+}
