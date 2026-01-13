@@ -35,13 +35,11 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('No authorization token provided');
     }
 
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+    const token = authHeader.substring(7);
 
     try {
-      // Verify JWT token
       const payload = this.jwtService.verify(token);
 
-      // Attach user info to request context for use in resolvers
       req.user = payload;
 
       return true;

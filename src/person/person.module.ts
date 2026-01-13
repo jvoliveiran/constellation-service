@@ -3,10 +3,10 @@ import { PersonService } from './person.service';
 import { PersonResolver } from './person.resolver';
 import { BullModule } from '@nestjs/bull';
 import { PersonConsumer } from './person.consumer';
-import { TelemetryModule } from '../telemetry/telemetry.module';
+import { PrismaModule } from 'src/prisma/prisma.module';
 
 @Module({
-  imports: [BullModule.registerQueue({ name: 'person' }), TelemetryModule],
+  imports: [BullModule.registerQueue({ name: 'person' }), PrismaModule],
   providers: [PersonService, PersonResolver, PersonConsumer],
   exports: [],
 })
