@@ -2,26 +2,34 @@
   <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="200" alt="Nest Logo" /></a>
 </p>
 
-## {{projectName}}
+## Constellation Service
 
-{{projectDescription}}
-
-NestJS GraphQL subgraph for an Apollo Federation v2 architecture. Provides a `Person` entity and supporting APIs, with Prisma (PostgreSQL), Bull (Redis) for background jobs, health checks, and structured logging via Winston.
+NestJS GraphQL subgraph for an Apollo Federation v2 architecture. Provides a `Person` entity and supporting APIs, with Prisma (PostgreSQL), Bull (Redis) for background jobs, JWT authentication, health checks, structured logging via Winston, and full observability through OpenTelemetry (traces, metrics, logs). Infrastructure is managed with Terraform on AWS ECS Fargate.
 
 ### Stack
-- **Runtime**: Node.js 20 (see `.nvmrc`)
-- **Framework**: NestJS 10
-- **GraphQL**: Apollo Federation v2 (`@nestjs/apollo`, `@nestjs/graphql`)
-- **DB/ORM**: PostgreSQL + Prisma
-- **Queues**: Bull + Redis
-- **Logging**: `nest-winston`
-- **Health**: `@nestjs/terminus`
+
+| Layer | Technology | Version |
+|-------|-----------|---------|
+| **Runtime** | Node.js | 20 (see `.nvmrc`) |
+| **Framework** | NestJS | 10 |
+| **Language** | TypeScript | 5.1 (ES2021 target) |
+| **GraphQL** | Apollo Federation v2 | `@nestjs/apollo` 12, `@apollo/subgraph` 2.6 |
+| **Database** | PostgreSQL + Prisma | Prisma 5.12 |
+| **Queues** | Bull + Redis | Bull 4.12, Redis 7.2 |
+| **Authentication** | JWT | `@nestjs/jwt` 11 |
+| **Health** | `@nestjs/terminus` | 10.2 |
+| **Logging** | Winston + OpenTelemetry | `nest-winston` 1.9, `winston` 3.13 |
+| **Observability** | OpenTelemetry (OTLP) | Traces, metrics, and logs |
+| **Monitoring** | Jaeger + Prometheus | Local dev via Docker Compose |
+| **Infrastructure** | Terraform + AWS | ECS Fargate, RDS, ALB, ECR |
+| **Linting** | ESLint + Prettier | ESLint 8.42, Prettier 3.0 |
+| **Testing** | Jest + Supertest | Jest 29.5 |
 
 ## Getting started
 
 ### Prerequisites
 - Node 20 (recommended: `nvm use`)
-- Docker (optional, for Postgres/Redis via `docker-compose`)
+- Docker and Docker Compose (for Postgres, Redis, Jaeger, and Prometheus)
 
 ### Install
 ```bash
@@ -29,7 +37,9 @@ npm install
 ```
 
 ### Environment
-Create a `.env` in the project root. Example:
+
+Copy `.env.example` to `.env` and adjust values as needed:
+
 ```env
 # Service
 SERVICE_PORT=3000
@@ -37,7 +47,7 @@ SERVICE_PORT=3000
 # Database (used by prisma/schema.prisma via DATABASE_URL)
 DATABASE_USER=postgres
 DATABASE_PASSWORD=postgres
-DATABASE_NAME={{projectName}}
+DATABASE_NAME=constellation
 DATABASE_HOST=localhost
 DATABASE_PORT=5432
 DATABASE_URL=postgresql://${DATABASE_USER}:${DATABASE_PASSWORD}@${DATABASE_HOST}:${DATABASE_PORT}/${DATABASE_NAME}?schema=public
@@ -45,40 +55,118 @@ DATABASE_URL=postgresql://${DATABASE_USER}:${DATABASE_PASSWORD}@${DATABASE_HOST}
 # Redis (Bull)
 REDIS_HOST=localhost
 REDIS_PORT=6379
-REDIS_PASSWORD=
+REDIS_PASSWORD=password
+
+# JWT
+JWT_SECRET=your-secret-key-change-in-production
+
+# CORS (required in production; comma-separated origins)
+FRONTEND_ORIGINS=http://localhost:3001
+
+# OpenTelemetry
+OTEL_SERVICE_NAME=constellation-service
+OTEL_SERVICE_NAMESPACE=constellation
+OTEL_SERVICE_VERSION=1.0.0
+DEPLOYMENT_ENVIRONMENT=development
 ```
 
+See the [Environment variables](#environment-variables) section for a full reference.
+
 ### Development
+
 ```bash
-# Start Postgres and Redis locally (uses docker-compose and your .env)
+# Start Postgres, Redis, Jaeger, and Prometheus (docker-compose)
 npm run dev:up
+
+# Run Prisma migrations
+npx prisma migrate dev
 
 # Run the service in watch mode
 npm run dev
 
-# Stop Postgres and Redis containers
+# Stop all containers
 npm run dev:down
 ```
+
 Service runs on `http://localhost:${SERVICE_PORT || 3000}`.
 
-### GraphQL
-- Endpoint: `/graphql`
-- Federation: enabled (v2). Entities use `@key` directive. See generated SDL at `src/schema.gql`.
-- Introspection and Apollo landing page are enabled in development.
+### Available scripts
 
-Example operations:
+| Script | Description |
+|--------|-------------|
+| `npm run build` | Compile the project with `nest build` |
+| `npm run dev` | Start in watch mode (`nest start --watch`) |
+| `npm run dev:up` | Start Docker Compose infrastructure |
+| `npm run dev:down` | Stop Docker Compose infrastructure |
+| `npm start` | Start the service |
+| `npm run start:prod` | Start from compiled `dist/main` |
+| `npm run start:debug` | Start in debug + watch mode |
+| `npm run lint` | Lint and auto-fix with ESLint |
+| `npm run format` | Format source with Prettier |
+| `npm test` | Run unit tests |
+| `npm run test:watch` | Run unit tests in watch mode |
+| `npm run test:cov` | Run tests with coverage report |
+| `npm run test:debug` | Run tests in debug mode |
+| `npm run test:e2e` | Run end-to-end tests |
+| `npm run prisma:migration` | Create a new Prisma migration |
+| `npm run prisma:reset` | Reset database and re-apply migrations |
+| `npm run prisma:ui` | Open Prisma Studio |
+
+## GraphQL
+
+### Endpoint and tooling
+- **Endpoint**: `/graphql`
+- **Introspection**: enabled
+- **Apollo Landing Page**: enabled in development
+- **Generated SDL**: `src/schema.gql` (auto-generated, do not edit directly)
+
+### Federation
+
+The service is an Apollo Federation v2 subgraph, configured with `ApolloFederationDriver` and `autoSchemaFile` for automatic SDL generation.
+
+**Federation schema extensions:**
 ```graphql
-# Query all people
+extend schema
+  @link(url: "https://specs.apollo.dev/federation/v2.3",
+        import: ["@key", "@shareable", "@composeDirective"])
+  @link(url: "https://myspecs.dev/accessControl/v1.0",
+        import: ["@public", "@private"])
+  @composeDirective(name: "@public")
+  @composeDirective(name: "@private")
+```
+
+The `Person` entity is annotated with `@key(fields: "id")` and implements `resolveReference` in `PersonResolver` for cross-subgraph entity resolution. Gateways (e.g., Apollo Router) can fetch the SDL from `/graphql` for composition.
+
+### Custom directives
+
+| Directive | Locations | Purpose |
+|-----------|-----------|---------|
+| `@public` | `FIELD_DEFINITION`, `OBJECT` | Marks fields/types as publicly accessible without authentication |
+| `@private` | `FIELD_DEFINITION`, `OBJECT` | Marks fields/types as requiring authentication (default behavior) |
+
+These are custom `@composeDirective`s exposed to the federation gateway for access control composition.
+
+### Operations
+
+| Operation | Type | Auth | Input | Output |
+|-----------|------|------|-------|--------|
+| `getAll` | Query | Public (`@public`) | — | `[Person!]!` |
+| `getOne` | Query | JWT required | `id: Int!` | `Person!` |
+| `createPerson` | Mutation | JWT required | `CreatePersonInput!` | `Person!` |
+
+**Example queries:**
+```graphql
+# Query all people (public, no auth required)
 query {
   getAll { id name age }
 }
 
-# Query one person
+# Query one person (requires Authorization header with JWT)
 query {
   getOne(id: 1) { id name age }
 }
 
-# Create a person
+# Create a person (requires Authorization header with JWT)
 mutation {
   createPerson(person: { name: "Ada", age: 36 }) {
     id
@@ -88,63 +176,101 @@ mutation {
 }
 ```
 
-### Federation notes
-- Subgraph is configured with `ApolloFederationDriver` and `autoSchemaFile` set to federation 2.
-- Entity example: `Person` is annotated with `@key(fields: "id")`. Reference resolution is implemented via `resolveReference` in `PersonResolver`.
-- Gateways (e.g., Apollo Router) can fetch SDL from `/graphql` for composition.
+### Input validation
+
+`CreatePersonInput` uses `class-validator` decorators:
+- `name`: must not be empty
+- `age`: must not be empty, minimum value of 1
+
+Validation is enforced globally via `ValidationPipe` in `main.ts`.
+
+## Authentication
+
+JWT-based authentication is applied globally via `JwtAuthGuard` (registered as `APP_GUARD`). All resolvers require a valid JWT token by default.
+
+To make a resolver or query publicly accessible, use the `@Public()` decorator:
+```ts
+@Public()
+@Query(() => [Person])
+getAll() { ... }
+```
+
+**Configuration:**
+- Secret: `JWT_SECRET` environment variable
+- Token expiry: 1 hour
+- Header: `Authorization: Bearer <token>`
 
 ## Prisma
-- Prisma schema: `prisma/schema.prisma`
-- DB URL: `DATABASE_URL` from `.env`
 
-Common workflows:
+### Schema
+
+Located at `prisma/schema.prisma`. Uses PostgreSQL with the `tracing` preview feature enabled for OpenTelemetry integration.
+
+**Current model:**
+```prisma
+model Person {
+  id   Int    @id @default(autoincrement())
+  name String
+  age  Int
+}
+```
+
+### Database tracing
+
+`PrismaService` extends `PrismaClient` and adds custom middleware that creates OpenTelemetry spans for every database operation. Each span includes:
+- `db.operation`: the Prisma action (e.g., `findMany`, `create`)
+- `db.collection.name`: the model name
+- `db.system`: `prisma`
+
+Query logging is enabled at all levels (`query`, `error`, `info`, `warn`).
+
+### Common workflows
+
 ```bash
-# Create a new migration and update client
-echo "your-migration-name" | xargs npm run prisma:migration
+# Create a new migration
+npm run prisma:migration
+# You'll be prompted for a migration name
 
-# Reset database and re-apply migrations (DANGEROUS)
+# Reset database and re-apply all migrations (DESTRUCTIVE)
 npm run prisma:reset
 
-# Open Prisma Studio
+# Open Prisma Studio (visual database browser)
 npm run prisma:ui
 
-# Regenerate Prisma Client (if needed)
+# Regenerate Prisma Client
 npx prisma generate
 ```
 
 ## Queues (Bull)
-- Redis connection is configured via `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`.
-- The `person` queue is registered in `PersonModule`.
-- On `createPerson`, a `create-person` job is enqueued; `PersonConsumer` handles it.
 
-Register a queue in a module:
+Redis-backed job queues using Bull, configured via `BullModule.forRootAsync` with `ConfigService` for environment-driven Redis connection.
+
+### How it works
+
+1. When `createPerson` is called, `PersonService` persists the record via Prisma and enqueues a `create-person` job to the `person` queue.
+2. `PersonConsumer` (annotated with `@Processor('person')`) picks up the job and processes it.
+
+### Adding a new queue
+
+**Register in a module:**
 ```ts
-import { Module } from '@nestjs/common';
-import { BullModule } from '@nestjs/bull';
-
 @Module({
   imports: [BullModule.registerQueue({ name: 'topic-name' })],
 })
 export class SomeModule {}
 ```
 
-Produce a message from a service:
+**Produce a message:**
 ```ts
-import { InjectQueue } from '@nestjs/bull';
-import { Queue } from 'bull';
-
-constructor(@InjectQueue('topic-name') private readonly producer: Queue) {}
+@InjectQueue('topic-name') private readonly producer: Queue
 
 async someFunction() {
   await this.producer.add('message-key', { foo: 'bar' });
 }
 ```
 
-Consume messages:
+**Consume messages:**
 ```ts
-import { Processor, Process } from '@nestjs/bull';
-import { Job } from 'bull';
-
 @Processor('topic-name')
 export class ExampleConsumer {
   @Process('message-key')
@@ -154,75 +280,281 @@ export class ExampleConsumer {
 }
 ```
 
-Example in this service:
-```ts
-// Producer (in PersonService)
-await this.personQueue.add('create-person', person);
-
-// Consumer (in PersonConsumer)
-@Process('create-person')
-async personCreatedResponder(job: Job<unknown>) {
-  return job.data;
-}
-```
-
 See also: [NestJS Queues docs](https://docs.nestjs.com/techniques/queues#queues)
 
 ## Health check
-- `GET /health` runs:
-  - HTTP ping to `https://google.com`
-  - Prisma DB connectivity check
+
+`GET /health` performs the following checks using `@nestjs/terminus`:
+
+| Check | Description |
+|-------|-------------|
+| HTTP Ping | Verifies external connectivity by pinging `https://google.com` |
+| Prisma | Verifies database connectivity via `PrismaService` |
 
 ## Logging
-Winston replaces the default Nest logger. Inject and use:
+
+Winston replaces the default NestJS logger globally. Two transports are configured:
+
+1. **Console transport**: Timestamps, millisecond durations, NestJS-like colored format with pretty printing.
+2. **OpenTelemetry transport**: Custom `OpenTelemetryTransport` that forwards logs to the OTLP log exporter with severity mapping (`error` → `ERROR`, `warn` → `WARN`, `info` → `INFO`, `debug` → `DEBUG`, `verbose`/`silly` → `TRACE`).
+
+**Default log level**: `debug`
+
+**Usage:**
 ```ts
-// Inject in your class
 @Inject(WINSTON_MODULE_NEST_PROVIDER) private readonly logger: Logger;
 
-// Usage
-this.logger.log('Some log message');
+this.logger.log('Info message');
+this.logger.debug('Debug message');
+this.logger.error('Error message');
 ```
-Log level is set to `debug` by default. See `WinstonModule.forRoot` in `src/app.module.ts`.
+
+## Observability (OpenTelemetry)
+
+Full observability stack using OpenTelemetry with OTLP exporters for traces, metrics, and logs. Configuration is in `src/monitoring/tracer.ts`.
+
+### Signals
+
+| Signal | Exporter | Local Endpoint | Export Interval |
+|--------|----------|----------------|-----------------|
+| Traces | `OTLPTraceExporter` | `http://localhost:4318/v1/traces` | On span end |
+| Metrics | `OTLPMetricExporter` | `http://localhost:4318/v1/metrics` | Every 60s |
+| Logs | `OTLPLogExporter` | `http://localhost:4318/v1/logs` | Batched |
+
+### Auto-instrumentation
+
+Enabled via `@opentelemetry/auto-instrumentations-node` with the following configuration:
+- **HTTP instrumentation**: enabled, with ignored paths: `/metrics`, `/traces`, `/logs`, `/api/health`
+- **FS instrumentation**: disabled (noisy)
+- **Winston instrumentation**: enabled, enriches log records with service metadata
+- **Prisma tracing**: enabled via preview feature + custom middleware spans
+
+### Resource attributes
+
+```
+service.name = constellation-service
+service.namespace = constellation
+service.version = 1.0.0
+deployment.environment = development | production
+telemetry.sdk.name = opentelemetry
+telemetry.sdk.language = nodejs
+telemetry.sdk.version = 1.28.0
+```
+
+### Exporter configuration
+
+All exporters use GZIP compression, 30s timeout, and a concurrency limit of 10. Supports custom endpoints via `OTEL_EXPORTER_OTLP_ENDPOINT` (e.g., Grafana Cloud) or local endpoints via `OTLP_HOST`/`OTLP_PORT`.
+
+### Local monitoring tools
+
+Docker Compose includes:
+
+| Tool | Port | Purpose |
+|------|------|---------|
+| **Jaeger** | `16686` (UI), `4317` (gRPC), `4318` (HTTP) | Distributed tracing |
+| **Prometheus** | `9090` | Metrics collection (config: `prometheus.yml`) |
+
+Access Jaeger UI at `http://localhost:16686` and Prometheus at `http://localhost:9090`.
 
 ## Testing
+
+### Unit tests
 ```bash
-# unit tests
-npm run test
-
-# e2e tests
-npm run test:e2e
-
-# coverage
-npm run test:cov
+npm test                 # Run all unit tests
+npm run test:watch       # Watch mode
+npm run test:cov         # With coverage report (output: coverage/)
+npm run test:debug       # Debug mode (--inspect-brk)
 ```
 
-## Docker
-### Build and run the service image
+Unit tests match `src/**/*.spec.ts`.
+
+### E2E tests
 ```bash
-# Build (note lowercase dockerfile name)
+npm run test:e2e
+```
+
+E2E tests match `test/**/*.e2e-spec.ts`. The test setup (`test/setup-e2e.ts`):
+- Configures a test database URL via `DATABASE_URL`
+- Disables OpenTelemetry (`OTEL_SDK_DISABLED=true`) to prevent segfaults
+- Sets a 30-second timeout
+
+**Test infrastructure:**
+- `test/factory/create-test-module.ts`: Creates a NestJS testing module with `AppModule`, initializes the app with `ValidationPipe`, and provides `prisma` and `app` instances for test use.
+- `test/factory/person.factory.ts`: Helper for creating test `Person` records via Prisma.
+
+**Current E2E test coverage (Person):**
+- Query all people (public, no auth)
+- Query one person by ID (with JWT)
+- Reject query without authentication
+- Create a person (with JWT)
+- Reject creation without authentication
+- Reject creation with invalid input (age < 1)
+
+## CORS
+
+CORS is configured in `main.ts` with environment-aware behavior:
+
+- **Development**: all origins are allowed
+- **Production**: only origins listed in `FRONTEND_ORIGINS` are allowed (comma-separated). The service throws an error at startup if `FRONTEND_ORIGINS` is empty in production.
+
+Allowed methods: `GET`, `POST`, `OPTIONS`. Credentials are enabled.
+
+## Docker
+
+### Build and run the service image
+
+The Dockerfile uses a multi-stage build:
+1. **Build stage**: `node:20` — installs all dependencies and compiles
+2. **Production stage**: `node:20-alpine` — copies only production dependencies and compiled output
+
+```bash
+# Build
 docker build -f dockerfile -t constellation-service .
 
-# Run with your .env
+# Run
 docker run --env-file .env -p 3000:3000 constellation-service
 ```
 
-### Local infra (recommended for dev)
-Use `docker-compose` to spin up Postgres and Redis (ports and creds read from `.env`):
+### Local infrastructure (Docker Compose)
+
+Docker Compose provides the full development stack:
+
+| Service | Image | Port(s) | Purpose |
+|---------|-------|---------|---------|
+| **PostgreSQL** | `postgres:latest` | `5432` | Primary database |
+| **Redis** | `redis:7.2` | `6379` | Bull job queue backend |
+| **Jaeger** | `jaegertracing/all-in-one:latest` | `16686`, `4317`, `4318` | Trace collection and UI |
+| **Prometheus** | `prom/prometheus:latest` | `9090` | Metrics collection |
+
 ```bash
-npm run dev:up
-# ... work on the app
-npm run dev:down
+npm run dev:up     # Start all services
+npm run dev:down   # Stop all services
 ```
 
-## Project structure (high-level)
-- `src/app.module.ts`: App wiring (GraphQL federation, Prisma, Bull, health, logging)
-- `src/person/*`: `Person` entity, resolver, service, queue consumer
-- `src/graphql/*`: GraphQL helpers (error formatting, types)
-- `src/prisma/*`: Prisma module/service
-- `src/health/*`: Health endpoints
-- `prisma/schema.prisma`: Prisma schema
+Data is persisted via Docker volumes (`constellation-optl-data` for Postgres, `redis-optl-data` for Redis).
 
-## Notes
-- Generated SDL: `src/schema.gql` (do not edit directly)
-- Node version: defined in `.nvmrc`
-- Default service port: `SERVICE_PORT` (falls back to 3000)
+## Infrastructure (Terraform)
+
+Infrastructure is defined in the `terraform/` directory for deployment on AWS.
+
+### Bootstrap
+
+`terraform/bootstrap/` creates the S3 bucket for Terraform remote state with versioning, encryption (AES256), and public access blocking.
+
+```bash
+cd terraform/bootstrap
+terraform init && terraform apply
+```
+
+### Main infrastructure
+
+`terraform/main.tf` uses a shared `constellation-infra` module to provision:
+
+- **ECS Fargate**: Container orchestration with configurable CPU/memory and Fargate Spot support
+- **RDS PostgreSQL**: Managed database (`db.t3.micro` default)
+- **ECR**: Container image registry
+- **ALB**: Application Load Balancer with HTTPS (ACM + Route53)
+- **CloudWatch**: Logging
+- **Auto-scaling**: Scheduled scaling support
+
+**Key variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `aws_region` | `us-east-1` | AWS region |
+| `db_instance_class` | `db.t3.micro` | RDS instance type |
+| `db_allocated_storage` | `5` | Storage in GB |
+| `task_cpu` | `512` | CPU units (512 = 0.5 vCPU) |
+| `task_memory` | `1024` | Memory in MB |
+| `desired_count` | `2` | Number of ECS tasks |
+| `enable_fargate_spot` | `true` | Use Fargate Spot instances |
+| `fargate_spot_percentage` | `50` | Percentage of tasks on Spot |
+| `health_check_path` | `/health` | Health check endpoint |
+| `skip_ecs_deployment` | `false` | Skip ECS deployment (for initial bootstrap) |
+
+## Project structure
+
+```
+constellation-service/
+├── src/
+│   ├── main.ts                        # Bootstrap, CORS, validation pipe
+│   ├── app.module.ts                  # Root module (GraphQL, Prisma, Bull, JWT, Winston)
+│   ├── schema.gql                     # Auto-generated Federation SDL
+│   ├── person/
+│   │   ├── person.module.ts           # Person module registration
+│   │   ├── person.resolver.ts         # GraphQL resolver (queries, mutations, reference)
+│   │   ├── person.service.ts          # Business logic + queue producer
+│   │   ├── person.consumer.ts         # Bull queue consumer
+│   │   ├── person.types.ts            # GraphQL ObjectType (federation entity)
+│   │   └── person.dto.ts              # Input types with validation
+│   ├── graphql/
+│   │   ├── formatError.ts             # Custom GraphQL error formatting
+│   │   ├── types.ts                   # GraphQL type helpers
+│   │   ├── decorators/
+│   │   │   └── public.decorator.ts    # @Public() decorator for open endpoints
+│   │   ├── directives/
+│   │   │   ├── access-control.directive.ts  # @public/@private GraphQL directives
+│   │   │   └── schema-extension.ts          # Federation schema extensions
+│   │   └── guards/
+│   │       └── jwt-auth.guard.ts      # Global JWT auth guard
+│   ├── prisma/
+│   │   ├── prisma.module.ts           # Global Prisma module
+│   │   └── prisma.service.ts          # PrismaClient + OTEL tracing middleware
+│   ├── health/
+│   │   ├── health.module.ts           # Health module
+│   │   └── health.controller.ts       # GET /health endpoint
+│   └── monitoring/
+│       ├── tracer.ts                  # OpenTelemetry SDK configuration
+│       └── winston.transporter.ts     # Custom Winston → OTLP transport
+├── prisma/
+│   ├── schema.prisma                  # Database schema
+│   └── migrations/                    # Migration history
+├── test/
+│   ├── jest-e2e.json                  # E2E test config
+│   ├── setup-e2e.ts                   # E2E environment setup
+│   ├── person.e2e-spec.ts            # Person E2E tests
+│   └── factory/
+│       ├── create-test-module.ts      # Test module factory
+│       └── person.factory.ts          # Test data factory
+├── terraform/
+│   ├── main.tf                        # AWS infrastructure
+│   ├── variables.tf                   # Terraform variables
+│   ├── outputs.tf                     # Terraform outputs
+│   └── bootstrap/                     # S3 state bucket setup
+├── .github/workflows/ci.yml          # CI pipeline
+├── docker-compose.yml                 # Dev infrastructure
+├── dockerfile                         # Multi-stage Docker build
+├── prometheus.yml                     # Prometheus scrape config
+├── constellation.config.json          # Constellation config
+├── .eslintrc.js                       # ESLint config
+├── .prettierrc                        # Prettier config (single quotes, trailing commas)
+├── .nvmrc                             # Node version (20)
+├── tsconfig.json                      # TypeScript config
+├── tsconfig.build.json                # Build-specific TS config
+├── jest.config.json                   # Jest unit test config
+└── nest-cli.json                      # NestJS CLI config
+```
+
+## Environment variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `SERVICE_PORT` | No | `3000` | Port the service listens on |
+| `DATABASE_HOST` | No | `localhost` | PostgreSQL host |
+| `DATABASE_PORT` | No | `5432` | PostgreSQL port |
+| `DATABASE_USER` | No | `postgres` | PostgreSQL user |
+| `DATABASE_PASSWORD` | Yes | — | PostgreSQL password |
+| `DATABASE_NAME` | Yes | — | Database name |
+| `DATABASE_URL` | Yes | — | Full Prisma connection string |
+| `REDIS_HOST` | No | `localhost` | Redis host |
+| `REDIS_PORT` | No | `6379` | Redis port |
+| `REDIS_PASSWORD` | No | — | Redis password |
+| `JWT_SECRET` | Yes | `your-secret-key-change-in-production` | JWT signing secret |
+| `FRONTEND_ORIGINS` | Prod only | — | Comma-separated CORS origins |
+| `NODE_ENV` | No | — | Environment (`production`, `development`) |
+| `OTEL_SERVICE_NAME` | No | `constellation-service` | OpenTelemetry service name |
+| `OTEL_SERVICE_NAMESPACE` | No | `constellation` | OpenTelemetry namespace |
+| `OTEL_SERVICE_VERSION` | No | `1.0.0` | OpenTelemetry service version |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | `http://localhost:4318` | OTLP exporter endpoint |
+| `OTEL_EXPORTER_OTLP_HEADERS` | No | — | OTLP auth headers (e.g., for Grafana Cloud) |
+| `DEPLOYMENT_ENVIRONMENT` | No | `development` | Deployment environment label |
