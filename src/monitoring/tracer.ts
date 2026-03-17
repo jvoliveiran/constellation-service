@@ -117,9 +117,12 @@ const sdk = new NodeSDK({
       logHook: (_span, record) => {
         record['resource.service.name'] =
           resource.attributes[ATTR_SERVICE_NAME];
-        record['resource.service.namespace'] = 'constellation';
-        record['resource.service.version'] = '1.0.0';
-        record['resource.deployment.environment'] = 'production';
+        record['resource.service.namespace'] =
+          resource.attributes['service.namespace'];
+        record['resource.service.version'] =
+          resource.attributes[ATTR_SERVICE_VERSION];
+        record['resource.deployment.environment'] =
+          resource.attributes['deployment.environment'];
       },
     }),
   ],

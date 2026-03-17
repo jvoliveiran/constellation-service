@@ -10,6 +10,10 @@ COPY package*.json ./
 # Install dependencies
 RUN npm install
 
+# Copy prisma schema and generate client
+COPY prisma ./prisma
+RUN npx prisma generate
+
 # Copy the rest of the application code
 COPY . .
 
@@ -26,9 +30,16 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install --only=production
 
+# Copy prisma schema and generate client for production
+COPY prisma ./prisma
+RUN npx prisma generate
+
 # Copy the build output from the build stage
 COPY --from=build /app/dist ./dist
-COPY --from=build /app/node_modules ./node_modules
+
+# Copy entrypoint script
+COPY docker-entrypoint.sh ./
+RUN chmod +x docker-entrypoint.sh
 
 # Expose the port the app runs on
 EXPOSE 3000
@@ -36,5 +47,6 @@ EXPOSE 3000
 # Set environment variables
 ENV NODE_ENV=production
 
-# Command to run the application
+# Use entrypoint to run migrations before starting the app
+ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["node", "dist/main"]

@@ -34,13 +34,17 @@ describe('PersonModule (e2e)', () => {
     await close();
   });
 
-  it('should query all person', async () => {
+  it('should query all person with pagination', async () => {
     const queryData = {
       query: `query GetAllPerson {
         getAll {
-          id
-          name
-          age
+          items {
+            id
+            name
+            age
+          }
+          total
+          hasMore
         }
       }
       `,
@@ -53,7 +57,37 @@ describe('PersonModule (e2e)', () => {
       .expect('Content-Type', /json/)
       .expect(200);
 
-    expect(response.body.data.getAll.length).toBeGreaterThanOrEqual(1);
+    expect(response.body.data.getAll.items.length).toBeGreaterThanOrEqual(1);
+    expect(response.body.data.getAll.total).toBeGreaterThanOrEqual(1);
+    expect(typeof response.body.data.getAll.hasMore).toBe('boolean');
+  });
+
+  it('should query all person with custom pagination', async () => {
+    const queryData = {
+      query: `query GetAllPerson($skip: Int!, $take: Int!) {
+        getAll(skip: $skip, take: $take) {
+          items {
+            id
+            name
+            age
+          }
+          total
+          hasMore
+        }
+      }
+      `,
+      variables: { skip: 0, take: 1 },
+    };
+
+    const response = await request(app.getHttpServer())
+      .post('/graphql')
+      .send(queryData)
+      .set('Accept', 'application/json')
+      .expect('Content-Type', /json/)
+      .expect(200);
+
+    expect(response.body.data.getAll.items.length).toBeLessThanOrEqual(1);
+    expect(response.body.data.getAll.total).toBeGreaterThanOrEqual(1);
   });
 
   it('should query one person by ID with authentication', async () => {
@@ -77,6 +111,31 @@ describe('PersonModule (e2e)', () => {
       .expect(200);
 
     expect(response.body.data.getOne.id).toBe(person.id);
+  });
+
+  it('should return not found for non-existent person', async () => {
+    const queryData = {
+      query: `query GetOne($id: Int!) {
+        getOne(id: $id) {
+          id,
+          name,
+          age
+        }
+      }`,
+      variables: { id: 999999 },
+    };
+
+    const response = await request(app.getHttpServer())
+      .post('/graphql')
+      .send(queryData)
+      .set('Accept', 'application/json')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .expect('Content-Type', /json/)
+      .expect(200);
+
+    expect(response.body.data).toBeNull();
+    expect(response.body.errors.length).toBe(1);
+    expect(response.body.errors[0].message).toContain('Not Found');
   });
 
   it('should not query one person by ID without authentication', async () => {

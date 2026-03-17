@@ -1,9 +1,8 @@
-version: '3.9'
 services:
   postgres:
     image: postgres:latest
-    container_name: "optl-postgres"
-    hostname: "optl-postgres"
+    container_name: "{{projectName}}-postgres"
+    hostname: "{{projectName}}-postgres"
     environment:
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
       POSTGRES_USER: ${DATABASE_USER}
@@ -12,7 +11,7 @@ services:
     ports:
       - "${DATABASE_PORT}:5432"
     volumes:
-      - "constellation-optl-data:/var/lib/postgresql/data"
+      - "{{projectName}}-data:/var/lib/postgresql/data"
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ${DATABASE_USER}" ]
       interval: 10s
@@ -25,11 +24,11 @@ services:
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
     volumes:
-      - redis-optl-data:/data
+      - {{projectName}}-redis-data:/data
   jaeger:
     image: jaegertracing/all-in-one:latest
-    container_name: "optl-jaeger"
-    hostname: "optl-jaeger"
+    container_name: "{{projectName}}-jaeger"
+    hostname: "{{projectName}}-jaeger"
     ports:
       - "16686:16686"  # Jaeger UI
       - "14268:14268"  # Jaeger collector HTTP
@@ -44,8 +43,8 @@ services:
       retries: 3
   prometheus:
     image: prom/prometheus:latest
-    container_name: "optl-prometheus"
-    hostname: "optl-prometheus"
+    container_name: "{{projectName}}-prometheus"
+    hostname: "{{projectName}}-prometheus"
     ports:
       - "9090:9090"  # Prometheus UI
     volumes:
@@ -62,5 +61,5 @@ services:
       timeout: 10s
       retries: 3
 volumes:
-  "constellation-optl-data":
-  redis-optl-data:
+  "{{projectName}}-data":
+  {{projectName}}-redis-data:

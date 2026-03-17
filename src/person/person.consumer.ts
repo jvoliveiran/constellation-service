@@ -2,6 +2,7 @@ import { Process, Processor } from '@nestjs/bull';
 import { Inject, Logger } from '@nestjs/common';
 import { Job } from 'bull';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
+import { Person } from './person.types';
 
 @Processor('person')
 export class PersonConsumer {
@@ -11,9 +12,12 @@ export class PersonConsumer {
   ) {}
 
   @Process('create-person')
-  async personCreatedResponder(job: Job<unknown>) {
-    const data = job.data;
-    await this.logger.log('personCreatedResponder');
-    return data;
+  async personCreatedResponder(job: Job<Person>) {
+    const person = job.data;
+    this.logger.log(
+      `Processing create-person job for person id ${person.id}`,
+      PersonConsumer.name,
+    );
+    return person;
   }
 }

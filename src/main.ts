@@ -6,27 +6,32 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { ConfigService } from '@nestjs/config';
+import helmet from 'helmet';
+import { json } from 'express';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
+  const logger = app.get(WINSTON_MODULE_NEST_PROVIDER);
 
-  app.useLogger(app.get(WINSTON_MODULE_NEST_PROVIDER));
+  app.useLogger(logger);
+  app.use(helmet());
+  app.use(json({ limit: '1mb' }));
+  app.useGlobalFilters(new GlobalExceptionFilter(logger));
 
   const frontendOrigins = configService
-    .get<string>('FRONTEND_ORIGINS', '')
+    .get<string>('cors.frontendOrigins', '')
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean);
 
-  // Validate production configuration at startup
-  if (frontendOrigins.length === 0 && process.env.NODE_ENV === 'production') {
-    throw new Error('FRONTEND_ORIGINS must be configured in production');
-  }
+  const corsUnrestrictedEnvs = ['development', 'test'];
+  const nodeEnv = configService.get<string>('app.nodeEnv', 'development');
 
   app.enableCors({
     origin: (origin, callback) => {
-      if (!origin || process.env.NODE_ENV !== 'production') {
+      if (!origin || corsUnrestrictedEnvs.includes(nodeEnv)) {
         callback(null, true);
         return;
       }
@@ -46,7 +51,8 @@ async function bootstrap() {
       disableErrorMessages: false,
     }),
   );
-  const port = configService.get('SERVICE_PORT');
-  await app.listen(port || 3000);
+
+  const port = configService.get<number>('app.port', 3000);
+  await app.listen(port);
 }
 bootstrap();

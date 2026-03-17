@@ -1,5 +1,7 @@
 // E2E Test Setup
-process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:password@localhost:5432/constellation_test';
+process.env.DATABASE_URL =
+  process.env.DATABASE_URL ||
+  'postgresql://postgres:password@localhost:5432/{{projectName}}_test';
 
 // Disable OpenTelemetry for e2e tests to prevent segmentation faults
 process.env.OTEL_SDK_DISABLED = 'true';

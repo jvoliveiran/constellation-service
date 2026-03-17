@@ -16,6 +16,14 @@
         "type": "yaml",
         "variables": ["projectName"]
       },
+      "prometheus.yml": {
+        "type": "yaml",
+        "variables": ["projectName"]
+      },
+      "test/setup-e2e.ts": {
+        "type": "typescript",
+        "variables": ["projectName"]
+      },
       "terraform/main.tf": {
         "type": "terraform",
         "variables": ["projectName"]
@@ -45,4 +53,4 @@
       "build",
       "coverage"
     ]
-  } 
+  }

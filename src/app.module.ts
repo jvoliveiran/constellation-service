@@ -2,7 +2,7 @@ import {
   ApolloFederationDriver,
   ApolloFederationDriverConfig,
 } from '@nestjs/apollo';
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloServerPluginLandingPageLocalDefault } from '@apollo/server/plugin/landingPage/default';
@@ -27,11 +27,24 @@ import { federationDirectiveExtensions } from './graphql/directives/schema-exten
 import { JwtModule } from '@nestjs/jwt';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from './graphql/guards/jwt-auth.guard';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { JwtModuleOptions } from '@nestjs/jwt';
+import { GqlThrottlerGuard } from './common/guards/gql-throttler.guard';
+import { configValidationSchema } from './config/config.validation';
+import { configuration } from './config/configuration';
+import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
+import depthLimit = require('graphql-depth-limit');
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      load: [configuration],
+      validationSchema: configValidationSchema,
+      validationOptions: {
+        allowUnknown: true,
+        abortEarly: false,
+      },
     }),
     GraphQLModule.forRoot<ApolloFederationDriverConfig>({
       driver: ApolloFederationDriver,
@@ -44,6 +57,7 @@ import { JwtAuthGuard } from './graphql/guards/jwt-auth.guard';
       introspection: true,
       plugins: [ApolloServerPluginLandingPageLocalDefault()],
       formatError,
+      validationRules: [depthLimit(10)],
       buildSchemaOptions: {
         directives: [PublicDirective, PrivateDirective],
       },
@@ -51,37 +65,59 @@ import { JwtAuthGuard } from './graphql/guards/jwt-auth.guard';
         return extendSchema(schema, parse(federationDirectiveExtensions));
       },
     }),
-    WinstonModule.forRoot({
-      level: 'debug',
-      transports: [
-        new winston.transports.Console({
-          debugStdout: true,
-          format: winston.format.combine(
-            winston.format.timestamp(),
-            winston.format.ms(),
-            nestWinstonModuleUtilities.format.nestLike('{{projectName}}', {
-              colors: true,
-              prettyPrint: true,
-            }),
-          ),
-        }),
-        otelTransport,
-      ],
+    WinstonModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => ({
+        level: configService.get<string>('app.logLevel', 'debug'),
+        transports: [
+          new winston.transports.Console({
+            debugStdout: true,
+            format: winston.format.combine(
+              winston.format.timestamp(),
+              winston.format.ms(),
+              nestWinstonModuleUtilities.format.nestLike(
+                configService.get<string>(
+                  'otel.serviceName',
+                  'constellation-service',
+                ),
+                {
+                  colors: true,
+                  prettyPrint: true,
+                },
+              ),
+            ),
+          }),
+          otelTransport,
+        ],
+      }),
+      inject: [ConfigService],
     }),
     BullModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
         redis: {
-          host: configService.get('REDIS_HOST'),
-          port: configService.get('REDIS_PORT'),
-          password: configService.get('REDIS_PASSWORD'),
+          host: configService.get<string>('redis.host'),
+          port: configService.get<number>('redis.port'),
+          password: configService.get<string>('redis.password'),
         },
       }),
       inject: [ConfigService],
     }),
-    JwtModule.register({
-      secret: process.env.JWT_SECRET || 'your-secret-key-change-in-production',
-      signOptions: { expiresIn: '1h' },
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService): JwtModuleOptions => ({
+        secret: configService.get<string>('jwt.secret'),
+        signOptions: {
+          expiresIn: configService.get(
+            'jwt.expiresIn',
+            '1h',
+          ) as `${number}${'s' | 'm' | 'h' | 'd'}`,
+        },
+      }),
+      inject: [ConfigService],
+    }),
+    ThrottlerModule.forRoot({
+      throttlers: [{ ttl: 60000, limit: 100 }],
     }),
     HealthModule,
     PrismaModule,
@@ -92,6 +128,14 @@ import { JwtAuthGuard } from './graphql/guards/jwt-auth.guard';
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
     },
+    {
+      provide: APP_GUARD,
+      useClass: GqlThrottlerGuard,
+    },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(CorrelationIdMiddleware).forRoutes('*');
+  }
+}

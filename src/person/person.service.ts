@@ -1,10 +1,11 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Person } from './person.types';
 import { CreatePersonInput } from './person.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
+import { PaginationArgs } from '../common/dto/pagination.args';
 
 @Injectable()
 export class PersonService {
@@ -16,12 +17,24 @@ export class PersonService {
     private readonly personQueue: Queue,
   ) {}
 
-  async findAll(): Promise<Person[]> {
+  async findAll(
+    pagination: PaginationArgs,
+  ): Promise<{ items: Person[]; total: number; hasMore: boolean }> {
     this.logger.log('Finding all people', PersonService.name);
 
-    const people = await this.prismaService.person.findMany();
+    const [items, total] = await Promise.all([
+      this.prismaService.person.findMany({
+        skip: pagination.skip,
+        take: pagination.take,
+      }),
+      this.prismaService.person.count(),
+    ]);
 
-    return people;
+    return {
+      items,
+      total,
+      hasMore: pagination.skip + pagination.take < total,
+    };
   }
 
   async findOne(id: number): Promise<Person> {
@@ -34,7 +47,7 @@ export class PersonService {
     });
 
     if (!person) {
-      this.logger.error('Person not found', PersonService.name);
+      throw new NotFoundException(`Person with id ${id} not found`);
     }
 
     return person;
@@ -49,7 +62,10 @@ export class PersonService {
 
     const job = await this.personQueue.add('create-person', person);
 
-    this.logger.log('Person created', { person, job });
+    this.logger.log(`Person created with id ${person.id}`, {
+      personId: person.id,
+      jobId: job.id,
+    });
     return person;
   }
 }
