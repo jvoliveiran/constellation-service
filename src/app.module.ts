@@ -30,7 +30,7 @@ import { JwtAuthGuard } from './graphql/guards/jwt-auth.guard';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { JwtModuleOptions } from '@nestjs/jwt';
 import { GqlThrottlerGuard } from './common/guards/gql-throttler.guard';
-import { configValidationSchema } from './config/config.validation';
+import { validateConfig } from './config/config.validation';
 import { configuration } from './config/configuration';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import depthLimit = require('graphql-depth-limit');
@@ -40,11 +40,7 @@ import depthLimit = require('graphql-depth-limit');
     ConfigModule.forRoot({
       isGlobal: true,
       load: [configuration],
-      validationSchema: configValidationSchema,
-      validationOptions: {
-        allowUnknown: true,
-        abortEarly: false,
-      },
+      validate: validateConfig,
     }),
     GraphQLModule.forRoot<ApolloFederationDriverConfig>({
       driver: ApolloFederationDriver,
