@@ -356,6 +356,64 @@ Docker Compose includes:
 
 Access Jaeger UI at `http://localhost:16686` and Prometheus at `http://localhost:9090`.
 
+### Grafana Cloud (free tier)
+
+The OpenTelemetry setup supports Grafana Cloud out of the box via OTLP. All three signals (traces, metrics, logs) are sent to Grafana's managed backends: **Tempo** (traces), **Mimir** (metrics), and **Loki** (logs).
+
+#### 1. Create a Grafana Cloud account
+
+Sign up at [grafana.com](https://grafana.com) and create a free tier stack. The free tier includes:
+
+| Signal | Backend | Free Quota | Retention |
+|--------|---------|------------|-----------|
+| Traces | Tempo | 50 GB/month | 14 days |
+| Metrics | Mimir | 10,000 active series, 50 GB/month | 13 months |
+| Logs | Loki | 50 GB/month | 30 days |
+
+#### 2. Get your OTLP credentials
+
+1. In the Grafana Cloud portal, navigate to your stack
+2. Go to **Configure** → **OpenTelemetry (OTLP)**
+3. Copy the **OTLP endpoint** (e.g., `https://otlp-gateway-prod-sa-east-1.grafana.net/otlp`)
+4. Generate an **API token** with `MetricsPublisher`, `LogsPublisher`, and `TracesPublisher` permissions
+5. Build the auth token as `Basic base64(instanceId:apiToken)`
+
+#### 3. Configure environment variables
+
+Add the following to your `.env` file:
+
+```env
+# Grafana Cloud OTLP
+OTLP_ENDPOINT=https://otlp-gateway-prod-<REGION>.grafana.net/otlp
+OTLP_AUTH_TOKEN=Basic <base64(instanceId:apiToken)>
+
+# OpenTelemetry resource attributes
+OTEL_SERVICE_NAME=constellation-service
+OTEL_SERVICE_NAMESPACE=constellation
+OTEL_SERVICE_VERSION=1.0.0
+DEPLOYMENT_ENVIRONMENT=production
+```
+
+The tracer (`src/monitoring/tracer.ts`) reads `OTLP_ENDPOINT` (or `OTEL_EXPORTER_OTLP_ENDPOINT`) to route all signals to Grafana Cloud. When neither is set, it falls back to `http://localhost:4318` for local development with Jaeger.
+
+`OTLP_AUTH_TOKEN` is sent as the `Authorization` header on every OTLP export request.
+
+#### 4. Verify data in Grafana Cloud
+
+Start the service and generate some traffic, then verify each signal:
+
+- **Traces**: Go to **Explore** → select **Tempo** → search by `service.name = constellation-service`
+- **Metrics**: Go to **Explore** → select **Mimir** → query `{service_name="constellation-service"}`
+- **Logs**: Go to **Explore** → select **Loki** → query `{service_name="constellation-service"}`
+
+#### Free tier considerations
+
+- Keep `LOG_LEVEL=info` in production to stay within log quotas (avoid `debug` or `verbose`)
+- The metric reader exports every 60 seconds — this is already conservative for the free tier
+- Health check paths (`/health`, `/metrics`, `/traces`, `/logs`) are excluded from tracing to reduce noise
+- FS instrumentation is disabled by default to avoid excessive span generation
+- All exporters use GZIP compression to minimize bandwidth usage
+
 ## Testing
 
 ### Unit tests
@@ -555,6 +613,9 @@ constellation-service/
 | `OTEL_SERVICE_NAME` | No | `constellation-service` | OpenTelemetry service name |
 | `OTEL_SERVICE_NAMESPACE` | No | `constellation` | OpenTelemetry namespace |
 | `OTEL_SERVICE_VERSION` | No | `1.0.0` | OpenTelemetry service version |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | `http://localhost:4318` | OTLP exporter endpoint |
-| `OTEL_EXPORTER_OTLP_HEADERS` | No | — | OTLP auth headers (e.g., for Grafana Cloud) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | `http://localhost:4318` | OTLP exporter endpoint (alternative to `OTLP_ENDPOINT`) |
+| `OTLP_ENDPOINT` | No | — | OTLP gateway URL (e.g., Grafana Cloud `https://otlp-gateway-prod-<region>.grafana.net/otlp`) |
+| `OTLP_AUTH_TOKEN` | No | — | OTLP `Authorization` header value (e.g., `Basic base64(instanceId:apiToken)` for Grafana Cloud) |
+| `OTLP_HOST` | No | `localhost` | Local OTLP collector host (used when `OTLP_ENDPOINT` is not set) |
+| `OTLP_PORT` | No | `4318` | Local OTLP collector port (used when `OTLP_ENDPOINT` is not set) |
 | `DEPLOYMENT_ENVIRONMENT` | No | `development` | Deployment environment label |
