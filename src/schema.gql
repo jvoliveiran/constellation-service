@@ -17,6 +17,12 @@ type Mutation {
   createPerson(person: CreatePersonInput!): Person!
 }
 
+type PaginatedPersonResponse {
+  hasMore: Boolean!
+  items: [Person!]!
+  total: Int!
+}
+
 type Person {
   age: Int!
   id: Int!
@@ -24,6 +30,6 @@ type Person {
 }
 
 type Query {
-  getAll: [Person!]!
+  getAll(skip: Int! = 0, take: Int! = 20): PaginatedPersonResponse!
   getOne(id: Int!): Person!
 }

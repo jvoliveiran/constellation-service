@@ -42,24 +42,35 @@ import depthLimit = require('graphql-depth-limit');
       load: [configuration],
       validate: validateConfig,
     }),
-    GraphQLModule.forRoot<ApolloFederationDriverConfig>({
+    GraphQLModule.forRootAsync<ApolloFederationDriverConfig>({
       driver: ApolloFederationDriver,
-      autoSchemaFile: {
-        federation: 2,
-        path: join(process.cwd(), 'src/schema.gql'),
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => {
+        const isDevelopment =
+          configService.get<string>('app.nodeEnv') !== 'production';
+
+        return {
+          autoSchemaFile: {
+            federation: 2,
+            path: join(process.cwd(), 'src/schema.gql'),
+          },
+          playground: false,
+          sortSchema: true,
+          introspection: isDevelopment,
+          plugins: isDevelopment
+            ? [ApolloServerPluginLandingPageLocalDefault()]
+            : [],
+          formatError,
+          validationRules: [depthLimit(10)],
+          buildSchemaOptions: {
+            directives: [PublicDirective, PrivateDirective],
+          },
+          transformSchema: (schema) => {
+            return extendSchema(schema, parse(federationDirectiveExtensions));
+          },
+        };
       },
-      playground: false,
-      sortSchema: true,
-      introspection: true,
-      plugins: [ApolloServerPluginLandingPageLocalDefault()],
-      formatError,
-      validationRules: [depthLimit(10)],
-      buildSchemaOptions: {
-        directives: [PublicDirective, PrivateDirective],
-      },
-      transformSchema: (schema) => {
-        return extendSchema(schema, parse(federationDirectiveExtensions));
-      },
+      inject: [ConfigService],
     }),
     WinstonModule.forRootAsync({
       imports: [ConfigModule],
