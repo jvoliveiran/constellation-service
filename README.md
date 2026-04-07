@@ -4,7 +4,7 @@
 
 ## Constellation Service
 
-NestJS GraphQL subgraph for an Apollo Federation v2 architecture. Provides a `Person` entity and supporting APIs, with Prisma (PostgreSQL), Bull (Redis) for background jobs, JWT authentication, health checks, structured logging via Winston, and full observability through OpenTelemetry (traces, metrics, logs). Infrastructure is managed with Terraform on AWS ECS Fargate.
+NestJS GraphQL subgraph for an Apollo Federation v2 architecture. Provides a `Person` entity and supporting APIs, with Prisma (PostgreSQL), Bull (Redis) for background jobs, JWT authentication, cursor-based pagination, query complexity protection, health checks, structured logging via Winston, and full observability through OpenTelemetry (traces, metrics, logs). Infrastructure is managed with Terraform on AWS ECS Fargate.
 
 ### Stack
 
@@ -23,6 +23,8 @@ NestJS GraphQL subgraph for an Apollo Federation v2 architecture. Provides a `Pe
 | **Monitoring** | Jaeger + Prometheus | Local dev via Docker Compose |
 | **Infrastructure** | Terraform + AWS | ECS Fargate, RDS, ALB, ECR |
 | **Linting** | ESLint + Prettier | ESLint 8.42, Prettier 3.0 |
+| **Rate Limiting** | `@nestjs/throttler` | 6.5 |
+| **Query Protection** | `graphql-query-complexity` | 1.1 |
 | **Testing** | Jest + Supertest | Jest 29.5 |
 
 ## Getting started
@@ -150,15 +152,29 @@ These are custom `@composeDirective`s exposed to the federation gateway for acce
 
 | Operation | Type | Auth | Input | Output |
 |-----------|------|------|-------|--------|
-| `getAll` | Query | Public (`@public`) | — | `[Person!]!` |
+| `getAll` | Query | Public (`@public`) | `CursorPaginationArgs` (optional) | `CursorPaginatedPersonResponse` |
 | `getOne` | Query | JWT required | `id: Int!` | `Person!` |
 | `createPerson` | Mutation | JWT required | `CreatePersonInput!` | `Person!` |
 
 **Example queries:**
 ```graphql
-# Query all people (public, no auth required)
+# Query all people with cursor pagination (public, no auth required)
 query {
-  getAll { id name age }
+  getAll(first: 10) {
+    items { id name age createdAt }
+    hasMore
+    endCursor
+    total
+  }
+}
+
+# Paginate to the next page using the cursor
+query {
+  getAll(first: 10, after: "<endCursor from previous response>") {
+    items { id name age createdAt }
+    hasMore
+    endCursor
+  }
 }
 
 # Query one person (requires Authorization header with JWT)
@@ -175,6 +191,36 @@ mutation {
   }
 }
 ```
+
+### Pagination
+
+All list queries use **cursor-based pagination** (not offset-based). This provides stable ordering under concurrent writes and efficient traversal of large datasets.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `first` | `Int` | `20` | Number of items to return (1-100) |
+| `after` | `String` | `null` | Opaque cursor from a previous `endCursor` |
+
+**Response shape:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `items` | `[T!]!` | The list of items for the current page |
+| `hasMore` | `Boolean!` | Whether there are more items after this page |
+| `endCursor` | `String` | Opaque cursor for the last item (pass as `after` for next page) |
+| `total` | `Int` | Total count of items matching the query |
+
+The `CursorPaginated<T>` factory in `src/common/dto/cursor-paginated-response.factory.ts` generates paginated response types for any entity.
+
+### Query protection
+
+GraphQL queries are protected against abuse:
+
+| Protection | Limit | Description |
+|------------|-------|-------------|
+| **Depth limit** | 10 | Maximum nesting depth for queries |
+| **Complexity limit** | 100 | Maximum query complexity score (each field = 1 point) |
+| **Rate limiting** | 100 req/60s | Global rate limit via `@nestjs/throttler` |
 
 ### Input validation
 
@@ -200,6 +246,14 @@ getAll() { ... }
 - Token expiry: 1 hour
 - Header: `Authorization: Bearer <token>`
 
+**Available decorators:**
+
+| Decorator | Location | Purpose |
+|-----------|----------|---------|
+| `@Public()` | Resolver/Query | Bypasses JWT authentication |
+| `@CurrentUser()` | Resolver parameter | Injects the decoded JWT payload |
+| `@RequestMeta()` | Resolver parameter | Injects correlation ID, IP address, and user agent |
+
 ## Prisma
 
 ### Schema
@@ -209,20 +263,40 @@ Located at `prisma/schema.prisma`. Uses PostgreSQL with the `tracing` preview fe
 **Current model:**
 ```prisma
 model Person {
-  id   Int    @id @default(autoincrement())
-  name String
-  age  Int
+  id        Int      @id @default(autoincrement())
+  name      String
+  age       Int
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
 }
 ```
+
+### Repository pattern
+
+Data access is encapsulated in repository classes. Services never import `PrismaService` directly — they depend on their feature repository.
+
+```
+PersonResolver → PersonService → PersonRepository → PrismaService
+```
+
+### Prisma error codes
+
+Named constants for common Prisma errors are available in `src/prisma/prisma-error-codes.ts`:
+
+| Constant | Code | Meaning |
+|----------|------|---------|
+| `PRISMA_UNIQUE_CONSTRAINT_VIOLATION` | `P2002` | Unique constraint failed |
+| `PRISMA_RECORD_NOT_FOUND` | `P2025` | Record not found |
 
 ### Database tracing
 
 `PrismaService` extends `PrismaClient` and adds custom middleware that creates OpenTelemetry spans for every database operation. Each span includes:
 - `db.operation`: the Prisma action (e.g., `findMany`, `create`)
 - `db.collection.name`: the model name
-- `db.system`: `prisma`
+- `db.system`: `postgresql`
 
-Query logging is enabled at all levels (`query`, `error`, `info`, `warn`).
+Query logging is enabled at all levels in development. In test environment, only errors are logged to reduce noise.
 
 ### Common workflows
 
@@ -247,7 +321,7 @@ Redis-backed job queues using Bull, configured via `BullModule.forRootAsync` wit
 
 ### How it works
 
-1. When `createPerson` is called, `PersonService` persists the record via Prisma and enqueues a `create-person` job to the `person` queue.
+1. When `createPerson` is called, `PersonService` persists the record via `PersonRepository` and enqueues a `create-person` job to the `person` queue.
 2. `PersonConsumer` (annotated with `@Processor('person')`) picks up the job and processes it.
 
 ### Adding a new queue
@@ -440,9 +514,17 @@ E2E tests match `test/**/*.e2e-spec.ts`. The test setup (`test/setup-e2e.ts`):
 - `test/factory/create-test-module.ts`: Creates a NestJS testing module with `AppModule`, initializes the app with `ValidationPipe`, and provides `prisma` and `app` instances for test use.
 - `test/factory/person.factory.ts`: Helper for creating test `Person` records via Prisma.
 
+**Current unit test coverage:**
+- Config validation (15 tests)
+- Cursor utils: encode/decode round-trip, error handling (9 tests)
+- Email masking utility (5 tests)
+
 **Current E2E test coverage (Person):**
-- Query all people (public, no auth)
+- Query all people with default cursor pagination (public, no auth)
+- Query with custom `first` parameter
+- Paginate through results using cursor (`after`)
 - Query one person by ID (with JWT)
+- Return not found for non-existent person
 - Reject query without authentication
 - Create a person (with JWT)
 - Reject creation without authentication
@@ -535,21 +617,42 @@ terraform init && terraform apply
 ```
 constellation-service/
 ├── src/
-│   ├── main.ts                        # Bootstrap, CORS, validation pipe
-│   ├── app.module.ts                  # Root module (GraphQL, Prisma, Bull, JWT, Winston)
+│   ├── main.ts                        # Bootstrap, CORS, validation pipe, Helmet
+│   ├── app.module.ts                  # Root module (GraphQL, Prisma, Bull, JWT, Winston, Throttler)
 │   ├── schema.gql                     # Auto-generated Federation SDL
 │   ├── person/
 │   │   ├── person.module.ts           # Person module registration
 │   │   ├── person.resolver.ts         # GraphQL resolver (queries, mutations, reference)
 │   │   ├── person.service.ts          # Business logic + queue producer
+│   │   ├── person.repository.ts       # Prisma data access layer
 │   │   ├── person.consumer.ts         # Bull queue consumer
 │   │   ├── person.types.ts            # GraphQL ObjectType (federation entity)
 │   │   └── person.dto.ts              # Input types with validation
+│   ├── common/
+│   │   ├── dto/
+│   │   │   ├── cursor-pagination.args.ts           # CursorPaginationArgs (first/after)
+│   │   │   └── cursor-paginated-response.factory.ts # CursorPaginated<T> generic factory
+│   │   ├── types/
+│   │   │   └── decoded-cursor.types.ts  # Cursor type definition
+│   │   ├── utils/
+│   │   │   ├── cursor.utils.ts          # Cursor encode/decode
+│   │   │   └── mask-email.ts            # Email masking for logs
+│   │   ├── validators/
+│   │   │   ├── match.validator.ts       # @Match('field') decorator
+│   │   │   └── json-object.validator.ts # @IsJsonObject() validator
+│   │   ├── guards/
+│   │   │   └── gql-throttler.guard.ts   # GraphQL-aware throttler guard
+│   │   ├── filters/
+│   │   │   └── global-exception.filter.ts # Global HTTP exception filter
+│   │   └── middleware/
+│   │       └── correlation-id.middleware.ts # Correlation ID + OTEL span tagging
 │   ├── graphql/
 │   │   ├── formatError.ts             # Custom GraphQL error formatting
 │   │   ├── types.ts                   # GraphQL type helpers
 │   │   ├── decorators/
-│   │   │   └── public.decorator.ts    # @Public() decorator for open endpoints
+│   │   │   ├── public.decorator.ts    # @Public() decorator for open endpoints
+│   │   │   ├── current-user.decorator.ts  # @CurrentUser() JWT payload injection
+│   │   │   └── request-meta.decorator.ts  # @RequestMeta() correlation ID, IP, user agent
 │   │   ├── directives/
 │   │   │   ├── access-control.directive.ts  # @public/@private GraphQL directives
 │   │   │   └── schema-extension.ts          # Federation schema extensions
@@ -557,20 +660,26 @@ constellation-service/
 │   │       └── jwt-auth.guard.ts      # Global JWT auth guard
 │   ├── prisma/
 │   │   ├── prisma.module.ts           # Global Prisma module
-│   │   └── prisma.service.ts          # PrismaClient + OTEL tracing middleware
+│   │   ├── prisma.service.ts          # PrismaClient + OTEL tracing middleware
+│   │   └── prisma-error-codes.ts      # Named Prisma error constants
+│   ├── config/
+│   │   ├── configuration.ts           # Typed configuration factory
+│   │   └── config.validation.ts       # Zod-based env validation
 │   ├── health/
 │   │   ├── health.module.ts           # Health module
-│   │   └── health.controller.ts       # GET /health endpoint
+│   │   ├── health.controller.ts       # GET /health endpoint
+│   │   └── redis-health.indicator.ts  # Custom Redis health check
 │   └── monitoring/
 │       ├── tracer.ts                  # OpenTelemetry SDK configuration
 │       └── winston.transporter.ts     # Custom Winston → OTLP transport
 ├── prisma/
 │   ├── schema.prisma                  # Database schema
+│   ├── seed.ts                        # Database seeding
 │   └── migrations/                    # Migration history
 ├── test/
 │   ├── jest-e2e.json                  # E2E test config
 │   ├── setup-e2e.ts                   # E2E environment setup
-│   ├── person.e2e-spec.ts            # Person E2E tests
+│   ├── person.e2e-spec.ts            # Person E2E tests (9 tests)
 │   └── factory/
 │       ├── create-test-module.ts      # Test module factory
 │       └── person.factory.ts          # Test data factory
@@ -589,7 +698,6 @@ constellation-service/
 ├── .nvmrc                             # Node version (20)
 ├── tsconfig.json                      # TypeScript config
 ├── tsconfig.build.json                # Build-specific TS config
-├── jest.config.json                   # Jest unit test config
 └── nest-cli.json                      # NestJS CLI config
 ```
 
