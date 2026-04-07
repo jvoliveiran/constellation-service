@@ -34,6 +34,12 @@ import { validateConfig } from './config/config.validation';
 import { configuration } from './config/configuration';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import depthLimit = require('graphql-depth-limit');
+import {
+  fieldExtensionsEstimator,
+  getComplexity,
+  simpleEstimator,
+} from 'graphql-query-complexity';
+import { GraphQLSchema } from 'graphql';
 
 @Module({
   imports: [
@@ -57,9 +63,34 @@ import depthLimit = require('graphql-depth-limit');
           playground: false,
           sortSchema: true,
           introspection: isDevelopment,
-          plugins: isDevelopment
-            ? [ApolloServerPluginLandingPageLocalDefault()]
-            : [],
+          plugins: [
+            ...(isDevelopment
+              ? [ApolloServerPluginLandingPageLocalDefault()]
+              : []),
+            {
+              requestDidStart: async () => ({
+                async didResolveOperation({ request, document, schema }) {
+                  const complexity = getComplexity({
+                    schema: schema as GraphQLSchema,
+                    operationName: request.operationName ?? undefined,
+                    query: document,
+                    variables: request.variables ?? {},
+                    estimators: [
+                      fieldExtensionsEstimator(),
+                      simpleEstimator({ defaultComplexity: 1 }),
+                    ],
+                  });
+
+                  const MAX_COMPLEXITY = 100;
+                  if (complexity > MAX_COMPLEXITY) {
+                    throw new Error(
+                      `Query too complex: ${complexity}. Maximum allowed: ${MAX_COMPLEXITY}.`,
+                    );
+                  }
+                },
+              }),
+            },
+          ],
           formatError,
           validationRules: [depthLimit(10)],
           buildSchemaOptions: {

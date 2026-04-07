@@ -1,16 +1,18 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Person } from './person.types';
-import { CreatePersonInput } from './person.dto';
-import { PrismaService } from '../prisma/prisma.service';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
-import { PaginationArgs } from '../common/dto/pagination.args';
+import { Person } from './person.types';
+import { CreatePersonInput } from './person.dto';
+import { PersonRepository } from './person.repository';
+import { CursorPaginationArgs } from '../common/dto/cursor-pagination.args';
+import { CursorPaginatedResult } from '../common/dto/cursor-paginated-response.factory';
+import { encodeCursor, decodeCursor } from '../common/utils/cursor.utils';
 
 @Injectable()
 export class PersonService {
   constructor(
-    private readonly prismaService: PrismaService,
+    private readonly personRepository: PersonRepository,
     @Inject(WINSTON_MODULE_NEST_PROVIDER)
     private readonly logger: Logger,
     @InjectQueue('person')
@@ -18,33 +20,33 @@ export class PersonService {
   ) {}
 
   async findAll(
-    pagination: PaginationArgs,
-  ): Promise<{ items: Person[]; total: number; hasMore: boolean }> {
+    pagination: CursorPaginationArgs,
+  ): Promise<CursorPaginatedResult<Person>> {
     this.logger.log('Finding all people', PersonService.name);
 
-    const [items, total] = await Promise.all([
-      this.prismaService.person.findMany({
-        skip: pagination.skip,
-        take: pagination.take,
-      }),
-      this.prismaService.person.count(),
-    ]);
+    const afterCursor = pagination.after
+      ? decodeCursor(pagination.after)
+      : undefined;
 
-    return {
-      items,
-      total,
-      hasMore: pagination.skip + pagination.take < total,
-    };
+    const { items, hasMore } = await this.personRepository.findMany(
+      pagination.first,
+      afterCursor,
+    );
+
+    const lastItem = items[items.length - 1];
+    const endCursor = lastItem
+      ? encodeCursor(lastItem.createdAt, lastItem.id)
+      : null;
+
+    const total = await this.personRepository.count();
+
+    return { items, hasMore, endCursor, total };
   }
 
   async findOne(id: number): Promise<Person> {
     this.logger.debug('Finding one person', PersonService.name);
 
-    const person = await this.prismaService.person.findUnique({
-      where: {
-        id,
-      },
-    });
+    const person = await this.personRepository.findById(id);
 
     if (!person) {
       throw new NotFoundException(`Person with id ${id} not found`);
@@ -56,9 +58,7 @@ export class PersonService {
   async create(personInput: CreatePersonInput): Promise<Person> {
     this.logger.debug('Creating person', PersonService.name);
 
-    const person = await this.prismaService.person.create({
-      data: personInput,
-    });
+    const person = await this.personRepository.create(personInput);
 
     const job = await this.personQueue.add('create-person', person);
 
@@ -66,6 +66,7 @@ export class PersonService {
       personId: person.id,
       jobId: job.id,
     });
+
     return person;
   }
 }

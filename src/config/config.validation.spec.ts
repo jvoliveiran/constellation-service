@@ -53,7 +53,10 @@ describe('validateConfig', () => {
           ...validEnv,
           NODE_ENV: env,
           ...(env === 'production'
-            ? { JWT_SECRET: 'real-secret', FRONTEND_ORIGINS: 'https://app.example.com' }
+            ? {
+                JWT_SECRET: 'real-secret',
+                FRONTEND_ORIGINS: 'https://app.example.com',
+              }
             : {}),
         };
         const result = validateConfig(config);

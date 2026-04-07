@@ -27,7 +27,11 @@ export class RedisHealthIndicator
   }
 
   async onModuleDestroy() {
-    await this.redis.quit();
+    try {
+      await this.redis.quit();
+    } catch {
+      // Connection may already be closed during test teardown
+    }
   }
 
   async isHealthy(key: string): Promise<HealthIndicatorResult> {

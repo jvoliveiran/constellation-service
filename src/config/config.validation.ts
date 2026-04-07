@@ -1,70 +1,79 @@
 import { z } from 'zod';
 
-export const configValidationSchema = z.object({
-  // App
-  NODE_ENV: z
-    .enum(['development', 'production', 'test'])
-    .default('development'),
-  SERVICE_PORT: z.coerce.number().default(3000),
-  LOG_LEVEL: z
-    .enum(['error', 'warn', 'info', 'debug', 'verbose'])
-    .optional(),
+export const configValidationSchema = z
+  .object({
+    // App
+    NODE_ENV: z
+      .enum(['development', 'production', 'test'])
+      .default('development'),
+    SERVICE_PORT: z.coerce.number().default(3000),
+    LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug', 'verbose']).optional(),
 
-  // Database
-  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
+    // Database
+    DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
 
-  // Redis
-  REDIS_HOST: z.string().default('localhost'),
-  REDIS_PORT: z.coerce.number().default(6379),
-  REDIS_PASSWORD: z.string().default(''),
+    // Redis
+    REDIS_HOST: z.string().default('localhost'),
+    REDIS_PORT: z.coerce.number().default(6379),
+    REDIS_PASSWORD: z.string().default(''),
 
-  // JWT
-  JWT_SECRET: z.string().optional().default('dev-secret-do-not-use-in-production'),
+    // JWT
+    JWT_SECRET: z
+      .string()
+      .optional()
+      .default('dev-secret-do-not-use-in-production'),
 
-  // CORS
-  FRONTEND_ORIGINS: z.string().optional().default(''),
+    // CORS
+    FRONTEND_ORIGINS: z.string().optional().default(''),
 
-  // OpenTelemetry
-  OTEL_SERVICE_NAME: z.string().optional(),
-  OTEL_SERVICE_NAMESPACE: z.string().optional(),
-  OTEL_SERVICE_VERSION: z.string().optional(),
-  DEPLOYMENT_ENVIRONMENT: z.string().optional(),
-  OTLP_ENDPOINT: z.string().optional(),
-  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
-  OTLP_AUTH_TOKEN: z.string().optional(),
-  OTLP_HOST: z.string().optional(),
-  OTLP_PORT: z.coerce.number().optional(),
-  OTEL_SDK_DISABLED: z.string().optional(),
-}).superRefine((data, ctx) => {
-  if (data.NODE_ENV === 'production') {
-    if (!data.JWT_SECRET || data.JWT_SECRET === 'dev-secret-do-not-use-in-production') {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['JWT_SECRET'],
-        message: 'JWT_SECRET is required in production. Do not rely on default secrets.',
-      });
-    }
+    // OpenTelemetry
+    OTEL_SERVICE_NAME: z.string().optional(),
+    OTEL_SERVICE_NAMESPACE: z.string().optional(),
+    OTEL_SERVICE_VERSION: z.string().optional(),
+    DEPLOYMENT_ENVIRONMENT: z.string().optional(),
+    OTLP_ENDPOINT: z.string().optional(),
+    OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
+    OTLP_AUTH_TOKEN: z.string().optional(),
+    OTLP_HOST: z.string().optional(),
+    OTLP_PORT: z.coerce.number().optional(),
+    OTEL_SDK_DISABLED: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.NODE_ENV === 'production') {
+      if (
+        !data.JWT_SECRET ||
+        data.JWT_SECRET === 'dev-secret-do-not-use-in-production'
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['JWT_SECRET'],
+          message:
+            'JWT_SECRET is required in production. Do not rely on default secrets.',
+        });
+      }
 
-    if (!data.FRONTEND_ORIGINS) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['FRONTEND_ORIGINS'],
-        message: 'FRONTEND_ORIGINS must contain at least one valid origin in production.',
-      });
-    } else {
-      const origins = data.FRONTEND_ORIGINS.split(',')
-        .map((o) => o.trim())
-        .filter(Boolean);
-      if (origins.length === 0) {
+      if (!data.FRONTEND_ORIGINS) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['FRONTEND_ORIGINS'],
-          message: 'FRONTEND_ORIGINS must contain at least one valid origin in production.',
+          message:
+            'FRONTEND_ORIGINS must contain at least one valid origin in production.',
         });
+      } else {
+        const origins = data.FRONTEND_ORIGINS.split(',')
+          .map((o) => o.trim())
+          .filter(Boolean);
+        if (origins.length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['FRONTEND_ORIGINS'],
+            message:
+              'FRONTEND_ORIGINS must contain at least one valid origin in production.',
+          });
+        }
       }
     }
-  }
-});
+  });
 
 export type AppConfig = z.infer<typeof configValidationSchema>;
 

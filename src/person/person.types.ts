@@ -1,5 +1,5 @@
 import { Directive, Field, Int, ObjectType } from '@nestjs/graphql';
-import { Paginated } from '../common/dto/paginated-response.factory';
+import { CursorPaginated } from '../common/dto/cursor-paginated-response.factory';
 
 @ObjectType('Person')
 @Directive('@key(fields: "id")')
@@ -12,7 +12,10 @@ export class Person {
 
   @Field(() => Int, { nullable: false })
   age: number;
+
+  @Field(() => Date, { nullable: false })
+  createdAt: Date;
 }
 
 @ObjectType()
-export class PaginatedPersonResponse extends Paginated(Person) {}
+export class CursorPaginatedPersonResponse extends CursorPaginated(Person) {}

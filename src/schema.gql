@@ -13,23 +13,49 @@ input CreatePersonInput {
   name: String!
 }
 
+type CursorPaginatedPersonResponse {
+  """
+  Opaque cursor pointing to the last item. Pass as "after" to fetch the next page. Null when the result set is empty.
+  """
+  endCursor: String
+
+  """Whether there are more items after this page."""
+  hasMore: Boolean!
+
+  """The list of items for the current page."""
+  items: [Person!]!
+
+  """
+  Total number of items matching the filter. Only computed when this field is selected in the query.
+  """
+  total: Int
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
 type Mutation {
   createPerson(person: CreatePersonInput!): Person!
 }
 
-type PaginatedPersonResponse {
-  hasMore: Boolean!
-  items: [Person!]!
-  total: Int!
-}
-
 type Person {
   age: Int!
+  createdAt: DateTime!
   id: Int!
   name: String!
 }
 
 type Query {
-  getAll(skip: Int! = 0, take: Int! = 20): PaginatedPersonResponse!
+  getAll(
+    """
+    Opaque cursor. Pass the endCursor from a previous response to fetch the next page.
+    """
+    after: String = null
+
+    """Number of items to return. Min 1, max 100."""
+    first: Int! = 20
+  ): CursorPaginatedPersonResponse!
   getOne(id: Int!): Person!
 }

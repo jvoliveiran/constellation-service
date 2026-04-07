@@ -27,6 +27,11 @@ describe('PersonModule (e2e)', () => {
       username: 'testuser',
     });
 
+    // Reset table to avoid autoincrement conflicts with seeded data
+    await prisma.$executeRawUnsafe(
+      'TRUNCATE TABLE "Person" RESTART IDENTITY CASCADE',
+    );
+
     person = await createPerson({ name: 'test', age: 1 }, prisma);
   });
 
@@ -34,7 +39,7 @@ describe('PersonModule (e2e)', () => {
     await close();
   });
 
-  it('should query all person with pagination', async () => {
+  it('should query all persons with default cursor pagination', async () => {
     const queryData = {
       query: `query GetAllPerson {
         getAll {
@@ -42,9 +47,11 @@ describe('PersonModule (e2e)', () => {
             id
             name
             age
+            createdAt
           }
           total
           hasMore
+          endCursor
         }
       }
       `,
@@ -60,12 +67,13 @@ describe('PersonModule (e2e)', () => {
     expect(response.body.data.getAll.items.length).toBeGreaterThanOrEqual(1);
     expect(response.body.data.getAll.total).toBeGreaterThanOrEqual(1);
     expect(typeof response.body.data.getAll.hasMore).toBe('boolean');
+    expect(response.body.data.getAll.endCursor).toBeDefined();
   });
 
-  it('should query all person with custom pagination', async () => {
+  it('should query persons with custom first parameter', async () => {
     const queryData = {
-      query: `query GetAllPerson($skip: Int!, $take: Int!) {
-        getAll(skip: $skip, take: $take) {
+      query: `query GetAllPerson($first: Int!) {
+        getAll(first: $first) {
           items {
             id
             name
@@ -73,10 +81,11 @@ describe('PersonModule (e2e)', () => {
           }
           total
           hasMore
+          endCursor
         }
       }
       `,
-      variables: { skip: 0, take: 1 },
+      variables: { first: 1 },
     };
 
     const response = await request(app.getHttpServer())
@@ -88,6 +97,58 @@ describe('PersonModule (e2e)', () => {
 
     expect(response.body.data.getAll.items.length).toBeLessThanOrEqual(1);
     expect(response.body.data.getAll.total).toBeGreaterThanOrEqual(1);
+  });
+
+  it('should paginate through results using cursor', async () => {
+    // Create extra persons to ensure multiple pages
+    await createPerson({ name: 'PageTest1', age: 20 }, prisma);
+    await createPerson({ name: 'PageTest2', age: 21 }, prisma);
+
+    // First page
+    const firstPageQuery = {
+      query: `query GetFirstPage($first: Int!) {
+        getAll(first: $first) {
+          items { id name }
+          hasMore
+          endCursor
+        }
+      }`,
+      variables: { first: 1 },
+    };
+
+    const firstPageResponse = await request(app.getHttpServer())
+      .post('/graphql')
+      .send(firstPageQuery)
+      .set('Accept', 'application/json')
+      .expect(200);
+
+    const firstPage = firstPageResponse.body.data.getAll;
+    expect(firstPage.items.length).toBe(1);
+    expect(firstPage.hasMore).toBe(true);
+    expect(firstPage.endCursor).not.toBeNull();
+
+    // Second page using cursor
+    const secondPageQuery = {
+      query: `query GetSecondPage($first: Int!, $after: String!) {
+        getAll(first: $first, after: $after) {
+          items { id name }
+          hasMore
+          endCursor
+        }
+      }`,
+      variables: { first: 1, after: firstPage.endCursor },
+    };
+
+    const secondPageResponse = await request(app.getHttpServer())
+      .post('/graphql')
+      .send(secondPageQuery)
+      .set('Accept', 'application/json')
+      .expect(200);
+
+    const secondPage = secondPageResponse.body.data.getAll;
+    expect(secondPage.items.length).toBe(1);
+    // Items on page 2 should differ from page 1
+    expect(secondPage.items[0].id).not.toBe(firstPage.items[0].id);
   });
 
   it('should query one person by ID with authentication', async () => {
@@ -165,7 +226,7 @@ describe('PersonModule (e2e)', () => {
   });
 
   it('should add a new person with authentication', async () => {
-    const person = {
+    const personInput = {
       name: 'JV',
       age: 15,
     };
@@ -177,7 +238,7 @@ describe('PersonModule (e2e)', () => {
           name
         }
       }`,
-      variables: { person },
+      variables: { person: personInput },
     };
 
     const response = await request(app.getHttpServer())
@@ -188,13 +249,13 @@ describe('PersonModule (e2e)', () => {
       .expect('Content-Type', /json/)
       .expect(200);
 
-    expect(response.body.data.createPerson.name).toBe(person.name);
-    expect(response.body.data.createPerson.age).toBe(person.age);
+    expect(response.body.data.createPerson.name).toBe(personInput.name);
+    expect(response.body.data.createPerson.age).toBe(personInput.age);
     expect(response.body.data.createPerson.id).toBeGreaterThanOrEqual(1);
   });
 
   it('should not add a new person without authentication', async () => {
-    const person = {
+    const personInput = {
       name: 'JV',
       age: 15,
     };
@@ -206,7 +267,7 @@ describe('PersonModule (e2e)', () => {
           name
         }
       }`,
-      variables: { person },
+      variables: { person: personInput },
     };
 
     const response = await request(app.getHttpServer())
@@ -224,7 +285,7 @@ describe('PersonModule (e2e)', () => {
   });
 
   it('should not add a new person when age lower than 1', async () => {
-    const person = {
+    const personInput = {
       name: 'JV',
       age: 0,
     };
@@ -236,7 +297,7 @@ describe('PersonModule (e2e)', () => {
           name
         }
       }`,
-      variables: { person },
+      variables: { person: personInput },
     };
 
     const response = await request(app.getHttpServer())

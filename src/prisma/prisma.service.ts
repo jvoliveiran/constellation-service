@@ -7,26 +7,17 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
   private readonly tracer = trace.getTracer('prisma-service');
 
   constructor() {
+    const isTest = process.env.NODE_ENV === 'test';
+
     super({
-      // Enable tracing and logging for better observability
-      log: [
-        {
-          emit: 'stdout',
-          level: 'query',
-        },
-        {
-          emit: 'stdout',
-          level: 'error',
-        },
-        {
-          emit: 'stdout',
-          level: 'info',
-        },
-        {
-          emit: 'stdout',
-          level: 'warn',
-        },
-      ],
+      log: isTest
+        ? [{ emit: 'stdout', level: 'error' }]
+        : [
+            { emit: 'stdout', level: 'query' },
+            { emit: 'stdout', level: 'error' },
+            { emit: 'stdout', level: 'info' },
+            { emit: 'stdout', level: 'warn' },
+          ],
     });
 
     // Add middleware to create spans for database operations

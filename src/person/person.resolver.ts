@@ -6,13 +6,13 @@ import {
   ResolveReference,
   Resolver,
 } from '@nestjs/graphql';
-import { Person, PaginatedPersonResponse } from './person.types';
+import { Person, CursorPaginatedPersonResponse } from './person.types';
 import { PersonService } from './person.service';
 import { CreatePersonInput } from './person.dto';
 import { Inject, Logger } from '@nestjs/common';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { Public } from '../graphql/decorators/public.decorator';
-import { PaginationArgs } from '../common/dto/pagination.args';
+import { CursorPaginationArgs } from '../common/dto/cursor-pagination.args';
 
 @Resolver('Person')
 export class PersonResolver {
@@ -23,10 +23,10 @@ export class PersonResolver {
   ) {}
 
   @Public()
-  @Query(() => PaginatedPersonResponse)
+  @Query(() => CursorPaginatedPersonResponse)
   async getAll(
-    @Args() pagination: PaginationArgs,
-  ): Promise<PaginatedPersonResponse> {
+    @Args() pagination: CursorPaginationArgs,
+  ): Promise<CursorPaginatedPersonResponse> {
     return await this.personService.findAll(pagination);
   }
 

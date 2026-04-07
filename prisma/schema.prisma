@@ -9,7 +9,10 @@ datasource db {
 }
 
 model Person {
-  id   Int    @id @default(autoincrement())
-  name String
-  age  Int
+  id        Int      @id @default(autoincrement())
+  name      String
+  age       Int
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
 }
