@@ -17,12 +17,6 @@ export const configValidationSchema = z
     REDIS_PORT: z.coerce.number().default(6379),
     REDIS_PASSWORD: z.string().default(''),
 
-    // JWT
-    JWT_SECRET: z
-      .string()
-      .optional()
-      .default('dev-secret-do-not-use-in-production'),
-
     // CORS
     FRONTEND_ORIGINS: z.string().optional().default(''),
 
@@ -40,18 +34,6 @@ export const configValidationSchema = z
   })
   .superRefine((data, ctx) => {
     if (data.NODE_ENV === 'production') {
-      if (
-        !data.JWT_SECRET ||
-        data.JWT_SECRET === 'dev-secret-do-not-use-in-production'
-      ) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['JWT_SECRET'],
-          message:
-            'JWT_SECRET is required in production. Do not rely on default secrets.',
-        });
-      }
-
       if (!data.FRONTEND_ORIGINS) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,

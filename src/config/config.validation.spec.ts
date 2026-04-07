@@ -15,7 +15,6 @@ describe('validateConfig', () => {
       expect(result.REDIS_HOST).toBe('localhost');
       expect(result.REDIS_PORT).toBe(6379);
       expect(result.REDIS_PASSWORD).toBe('');
-      expect(result.JWT_SECRET).toBe('dev-secret-do-not-use-in-production');
       expect(result.FRONTEND_ORIGINS).toBe('');
     });
 
@@ -54,7 +53,6 @@ describe('validateConfig', () => {
           NODE_ENV: env,
           ...(env === 'production'
             ? {
-                JWT_SECRET: 'real-secret',
                 FRONTEND_ORIGINS: 'https://app.example.com',
               }
             : {}),
@@ -94,61 +92,27 @@ describe('validateConfig', () => {
       NODE_ENV: 'production',
     };
 
-    it('throws when JWT_SECRET is missing', () => {
-      expect(() =>
-        validateConfig({
-          ...productionEnv,
-          FRONTEND_ORIGINS: 'https://app.example.com',
-        }),
-      ).toThrow('JWT_SECRET is required in production');
-    });
-
-    it('throws when JWT_SECRET is the default dev value', () => {
-      expect(() =>
-        validateConfig({
-          ...productionEnv,
-          JWT_SECRET: 'dev-secret-do-not-use-in-production',
-          FRONTEND_ORIGINS: 'https://app.example.com',
-        }),
-      ).toThrow('JWT_SECRET is required in production');
-    });
-
     it('throws when FRONTEND_ORIGINS is missing', () => {
-      expect(() =>
-        validateConfig({
-          ...productionEnv,
-          JWT_SECRET: 'real-production-secret',
-        }),
-      ).toThrow('FRONTEND_ORIGINS must contain at least one valid origin');
+      expect(() => validateConfig(productionEnv)).toThrow(
+        'FRONTEND_ORIGINS must contain at least one valid origin',
+      );
     });
 
     it('throws when FRONTEND_ORIGINS is empty after trimming', () => {
       expect(() =>
         validateConfig({
           ...productionEnv,
-          JWT_SECRET: 'real-production-secret',
           FRONTEND_ORIGINS: '  ,  , ',
         }),
       ).toThrow('FRONTEND_ORIGINS must contain at least one valid origin');
     });
 
-    it('reports all validation errors at once', () => {
-      expect(() => validateConfig(productionEnv)).toThrow('JWT_SECRET');
-      try {
-        validateConfig(productionEnv);
-      } catch (e) {
-        expect((e as Error).message).toContain('FRONTEND_ORIGINS');
-      }
-    });
-
-    it('passes when JWT_SECRET and FRONTEND_ORIGINS are provided', () => {
+    it('passes when FRONTEND_ORIGINS is provided', () => {
       const result = validateConfig({
         ...productionEnv,
-        JWT_SECRET: 'real-production-secret',
         FRONTEND_ORIGINS: 'https://app.example.com,https://admin.example.com',
       });
 
-      expect(result.JWT_SECRET).toBe('real-production-secret');
       expect(result.FRONTEND_ORIGINS).toBe(
         'https://app.example.com,https://admin.example.com',
       );

@@ -24,11 +24,11 @@ import {
   PrivateDirective,
 } from './graphql/directives/access-control.directive';
 import { federationDirectiveExtensions } from './graphql/directives/schema-extension';
-import { JwtModule } from '@nestjs/jwt';
 import { APP_GUARD } from '@nestjs/core';
-import { JwtAuthGuard } from './graphql/guards/jwt-auth.guard';
+import { GatewayAuthGuard } from './graphql/guards/gateway-auth.guard';
+import { PermissionsGuard } from './graphql/guards/permissions.guard';
+import { UserReferenceModule } from './graphql/entities/user-reference.module';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { JwtModuleOptions } from '@nestjs/jwt';
 import { GqlThrottlerGuard } from './common/guards/gql-throttler.guard';
 import { validateConfig } from './config/config.validation';
 import { configuration } from './config/configuration';
@@ -141,34 +141,26 @@ import { GraphQLSchema } from 'graphql';
       }),
       inject: [ConfigService],
     }),
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      useFactory: (configService: ConfigService): JwtModuleOptions => ({
-        secret: configService.get<string>('jwt.secret'),
-        signOptions: {
-          expiresIn: configService.get(
-            'jwt.expiresIn',
-            '1h',
-          ) as `${number}${'s' | 'm' | 'h' | 'd'}`,
-        },
-      }),
-      inject: [ConfigService],
-    }),
     ThrottlerModule.forRoot({
       throttlers: [{ ttl: 60000, limit: 100 }],
     }),
     HealthModule,
     PrismaModule,
     PersonModule,
+    UserReferenceModule,
   ],
   providers: [
     {
       provide: APP_GUARD,
-      useClass: JwtAuthGuard,
+      useClass: GatewayAuthGuard,
     },
     {
       provide: APP_GUARD,
       useClass: GqlThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: PermissionsGuard,
     },
   ],
 })

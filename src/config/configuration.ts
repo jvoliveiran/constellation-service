@@ -14,10 +14,6 @@ export const configuration = () => ({
     port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
     password: process.env.REDIS_PASSWORD || '',
   },
-  jwt: {
-    secret: process.env.JWT_SECRET || 'dev-secret-do-not-use-in-production',
-    expiresIn: process.env.JWT_EXPIRES_IN || '1h',
-  },
   otel: {
     serviceName: process.env.OTEL_SERVICE_NAME || 'constellation-service',
     serviceNamespace: process.env.OTEL_SERVICE_NAMESPACE || 'constellation',

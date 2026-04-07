@@ -37,7 +37,6 @@
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.0",
     "@nestjs/graphql": "^13.0.0",
-    "@nestjs/jwt": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
     "@nestjs/terminus": "^11.0.0",
     "@nestjs/throttler": "^6.5.0",
