@@ -16,7 +16,16 @@ async function bootstrap() {
   const logger = app.get(WINSTON_MODULE_NEST_PROVIDER);
 
   app.useLogger(logger);
-  app.use(helmet());
+
+  const nodeEnv = configService.get<string>('app.nodeEnv', 'development');
+  const isDevelopment = nodeEnv !== 'production';
+
+  app.use(
+    helmet({
+      contentSecurityPolicy: isDevelopment ? false : undefined,
+      crossOriginEmbedderPolicy: isDevelopment ? false : undefined,
+    }),
+  );
   app.use(json({ limit: '1mb' }));
   app.useGlobalFilters(new GlobalExceptionFilter(logger));
 
@@ -27,7 +36,6 @@ async function bootstrap() {
     .filter(Boolean);
 
   const corsUnrestrictedEnvs = ['development', 'test'];
-  const nodeEnv = configService.get<string>('app.nodeEnv', 'development');
 
   app.enableCors({
     origin: (

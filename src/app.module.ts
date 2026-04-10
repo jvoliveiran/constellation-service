@@ -52,9 +52,10 @@ function buildGraphQLModule(): DynamicModule {
   return GraphQLModule.forRootAsync<
     ApolloFederationDriverConfig | ApolloDriverConfig
   >({
-    driver: process.env.FEDERATION_ENABLED === 'true'
-      ? ApolloFederationDriver
-      : ApolloDriver,
+    driver:
+      process.env.FEDERATION_ENABLED === 'true'
+        ? ApolloFederationDriver
+        : ApolloDriver,
     imports: [ConfigModule],
     useFactory: (configService: ConfigService) => {
       const isDevelopment =
@@ -79,6 +80,20 @@ function buildGraphQLModule(): DynamicModule {
           {
             requestDidStart: async () => ({
               async didResolveOperation({ request, document, schema }) {
+                const isIntrospection = document.definitions.some(
+                  (def) =>
+                    def.kind === 'OperationDefinition' &&
+                    def.selectionSet.selections.some(
+                      (sel) =>
+                        sel.kind === 'Field' &&
+                        (sel.name.value === '__schema' ||
+                          sel.name.value === '__type'),
+                    ),
+                );
+                if (isIntrospection) {
+                  return;
+                }
+
                 const complexity = getComplexity({
                   schema: schema as GraphQLSchema,
                   operationName: request.operationName ?? undefined,
@@ -101,7 +116,7 @@ function buildGraphQLModule(): DynamicModule {
           },
         ],
         formatError,
-        validationRules: [depthLimit(10)],
+        validationRules: [depthLimit(10, { ignore: [/^__/] })],
         buildSchemaOptions: {
           directives: [PublicDirective, PrivateDirective],
         },
@@ -173,9 +188,7 @@ function buildGraphQLModule(): DynamicModule {
     HealthModule,
     PrismaModule,
     PersonModule,
-    ...(process.env.FEDERATION_ENABLED === 'true'
-      ? [UserReferenceModule]
-      : []),
+    ...(process.env.FEDERATION_ENABLED === 'true' ? [UserReferenceModule] : []),
   ],
   providers: [
     {
