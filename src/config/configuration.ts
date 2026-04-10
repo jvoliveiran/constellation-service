@@ -5,6 +5,7 @@ export const configuration = () => ({
     logLevel:
       process.env.LOG_LEVEL ||
       (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
+    federationEnabled: process.env.FEDERATION_ENABLED === 'true',
   },
   database: {
     url: process.env.DATABASE_URL,

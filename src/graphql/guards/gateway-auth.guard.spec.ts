@@ -1,4 +1,5 @@
 import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { GqlExecutionContext } from '@nestjs/graphql';
 import { GatewayAuthGuard } from './gateway-auth.guard';
@@ -13,6 +14,7 @@ jest.mock('@nestjs/graphql', () => ({
 describe('GatewayAuthGuard', () => {
   let guard: GatewayAuthGuard;
   let reflector: jest.Mocked<Reflector>;
+  let configService: jest.Mocked<ConfigService>;
   let logger: { warn: jest.Mock; debug: jest.Mock };
 
   const validPayload: JwtPayload = {
@@ -48,6 +50,17 @@ describe('GatewayAuthGuard', () => {
     return { executionContext, req };
   }
 
+  function createGuard(federationEnabled = true) {
+    configService = {
+      get: jest.fn().mockImplementation((key: string, defaultValue?: unknown) => {
+        if (key === 'app.federationEnabled') return federationEnabled;
+        return defaultValue;
+      }),
+    } as unknown as jest.Mocked<ConfigService>;
+
+    guard = new GatewayAuthGuard(reflector, configService, logger as never);
+  }
+
   beforeEach(() => {
     reflector = {
       getAllAndOverride: jest.fn().mockReturnValue(false),
@@ -58,7 +71,7 @@ describe('GatewayAuthGuard', () => {
       debug: jest.fn(),
     };
 
-    guard = new GatewayAuthGuard(reflector, logger as never);
+    createGuard(true);
   });
 
   it('allows access and sets req.user for a valid x-user-context header', () => {
@@ -152,5 +165,12 @@ describe('GatewayAuthGuard', () => {
     expect(() => guard.canActivate(executionContext)).toThrow(
       UnauthorizedException,
     );
+  });
+
+  it('allows access without x-user-context when federation is disabled', () => {
+    createGuard(false);
+    const { executionContext } = buildMockContext({});
+
+    expect(guard.canActivate(executionContext)).toBe(true);
   });
 });

@@ -1,8 +1,15 @@
 import {
   ApolloFederationDriver,
   ApolloFederationDriverConfig,
+  ApolloDriver,
+  ApolloDriverConfig,
 } from '@nestjs/apollo';
-import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import {
+  DynamicModule,
+  MiddlewareConsumer,
+  Module,
+  NestModule,
+} from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloServerPluginLandingPageLocalDefault } from '@apollo/server/plugin/landingPage/default';
@@ -41,6 +48,79 @@ import {
 } from 'graphql-query-complexity';
 import { GraphQLSchema } from 'graphql';
 
+function buildGraphQLModule(): DynamicModule {
+  return GraphQLModule.forRootAsync<
+    ApolloFederationDriverConfig | ApolloDriverConfig
+  >({
+    driver: process.env.FEDERATION_ENABLED === 'true'
+      ? ApolloFederationDriver
+      : ApolloDriver,
+    imports: [ConfigModule],
+    useFactory: (configService: ConfigService) => {
+      const isDevelopment =
+        configService.get<string>('app.nodeEnv') !== 'production';
+      const federationEnabled = configService.get<boolean>(
+        'app.federationEnabled',
+        false,
+      );
+
+      return {
+        autoSchemaFile: {
+          ...(federationEnabled ? { federation: 2 } : {}),
+          path: join(process.cwd(), 'src/schema.gql'),
+        },
+        playground: false,
+        sortSchema: true,
+        introspection: isDevelopment,
+        plugins: [
+          ...(isDevelopment
+            ? [ApolloServerPluginLandingPageLocalDefault()]
+            : []),
+          {
+            requestDidStart: async () => ({
+              async didResolveOperation({ request, document, schema }) {
+                const complexity = getComplexity({
+                  schema: schema as GraphQLSchema,
+                  operationName: request.operationName ?? undefined,
+                  query: document,
+                  variables: request.variables ?? {},
+                  estimators: [
+                    fieldExtensionsEstimator(),
+                    simpleEstimator({ defaultComplexity: 1 }),
+                  ],
+                });
+
+                const MAX_COMPLEXITY = 100;
+                if (complexity > MAX_COMPLEXITY) {
+                  throw new Error(
+                    `Query too complex: ${complexity}. Maximum allowed: ${MAX_COMPLEXITY}.`,
+                  );
+                }
+              },
+            }),
+          },
+        ],
+        formatError,
+        validationRules: [depthLimit(10)],
+        buildSchemaOptions: {
+          directives: [PublicDirective, PrivateDirective],
+        },
+        ...(federationEnabled
+          ? {
+              transformSchema: (schema: GraphQLSchema) => {
+                return extendSchema(
+                  schema,
+                  parse(federationDirectiveExtensions),
+                );
+              },
+            }
+          : {}),
+      };
+    },
+    inject: [ConfigService],
+  });
+}
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -48,61 +128,7 @@ import { GraphQLSchema } from 'graphql';
       load: [configuration],
       validate: validateConfig,
     }),
-    GraphQLModule.forRootAsync<ApolloFederationDriverConfig>({
-      driver: ApolloFederationDriver,
-      imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => {
-        const isDevelopment =
-          configService.get<string>('app.nodeEnv') !== 'production';
-
-        return {
-          autoSchemaFile: {
-            federation: 2,
-            path: join(process.cwd(), 'src/schema.gql'),
-          },
-          playground: false,
-          sortSchema: true,
-          introspection: isDevelopment,
-          plugins: [
-            ...(isDevelopment
-              ? [ApolloServerPluginLandingPageLocalDefault()]
-              : []),
-            {
-              requestDidStart: async () => ({
-                async didResolveOperation({ request, document, schema }) {
-                  const complexity = getComplexity({
-                    schema: schema as GraphQLSchema,
-                    operationName: request.operationName ?? undefined,
-                    query: document,
-                    variables: request.variables ?? {},
-                    estimators: [
-                      fieldExtensionsEstimator(),
-                      simpleEstimator({ defaultComplexity: 1 }),
-                    ],
-                  });
-
-                  const MAX_COMPLEXITY = 100;
-                  if (complexity > MAX_COMPLEXITY) {
-                    throw new Error(
-                      `Query too complex: ${complexity}. Maximum allowed: ${MAX_COMPLEXITY}.`,
-                    );
-                  }
-                },
-              }),
-            },
-          ],
-          formatError,
-          validationRules: [depthLimit(10)],
-          buildSchemaOptions: {
-            directives: [PublicDirective, PrivateDirective],
-          },
-          transformSchema: (schema) => {
-            return extendSchema(schema, parse(federationDirectiveExtensions));
-          },
-        };
-      },
-      inject: [ConfigService],
-    }),
+    buildGraphQLModule(),
     WinstonModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
@@ -147,7 +173,9 @@ import { GraphQLSchema } from 'graphql';
     HealthModule,
     PrismaModule,
     PersonModule,
-    UserReferenceModule,
+    ...(process.env.FEDERATION_ENABLED === 'true'
+      ? [UserReferenceModule]
+      : []),
   ],
   providers: [
     {

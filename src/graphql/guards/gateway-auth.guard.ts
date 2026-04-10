@@ -6,6 +6,7 @@ import {
   Inject,
   Logger,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { GqlExecutionContext } from '@nestjs/graphql';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
@@ -16,11 +17,19 @@ const USER_CONTEXT_HEADER = 'x-user-context';
 
 @Injectable()
 export class GatewayAuthGuard implements CanActivate {
+  private readonly federationEnabled: boolean;
+
   constructor(
     private readonly reflector: Reflector,
+    private readonly configService: ConfigService,
     @Inject(WINSTON_MODULE_NEST_PROVIDER)
     private readonly logger: Logger,
-  ) {}
+  ) {
+    this.federationEnabled = this.configService.get<boolean>(
+      'app.federationEnabled',
+      false,
+    );
+  }
 
   canActivate(context: ExecutionContext): boolean {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
@@ -29,6 +38,10 @@ export class GatewayAuthGuard implements CanActivate {
     ]);
 
     if (isPublic) {
+      return true;
+    }
+
+    if (!this.federationEnabled) {
       return true;
     }
 

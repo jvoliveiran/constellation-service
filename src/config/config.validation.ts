@@ -8,6 +8,10 @@ export const configValidationSchema = z
       .default('development'),
     SERVICE_PORT: z.coerce.number().default(3000),
     LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug', 'verbose']).optional(),
+    FEDERATION_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((val) => val === 'true'),
 
     // Database
     DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
