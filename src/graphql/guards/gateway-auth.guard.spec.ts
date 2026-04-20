@@ -52,10 +52,12 @@ describe('GatewayAuthGuard', () => {
 
   function createGuard(federationEnabled = true) {
     configService = {
-      get: jest.fn().mockImplementation((key: string, defaultValue?: unknown) => {
-        if (key === 'app.federationEnabled') return federationEnabled;
-        return defaultValue;
-      }),
+      get: jest
+        .fn()
+        .mockImplementation((key: string, defaultValue?: unknown) => {
+          if (key === 'app.federationEnabled') return federationEnabled;
+          return defaultValue;
+        }),
     } as unknown as jest.Mocked<ConfigService>;
 
     guard = new GatewayAuthGuard(reflector, configService, logger as never);
