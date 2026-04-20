@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { PersonService } from './person.service';
 import { PersonResolver } from './person.resolver';
 import { PersonRepository } from './person.repository';
-import { BullModule } from '@nestjs/bull';
+import { BullModule } from '@nestjs/bullmq';
 import { PersonConsumer } from './person.consumer';
 import { PrismaModule } from 'src/prisma/prisma.module';
 

@@ -1,23 +1,23 @@
-import { Process, Processor } from '@nestjs/bull';
+import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Inject, Logger } from '@nestjs/common';
-import { Job } from 'bull';
+import { Job } from 'bullmq';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { Person } from './person.types';
 
 @Processor('person')
-export class PersonConsumer {
+export class PersonConsumer extends WorkerHost {
   constructor(
     @Inject(WINSTON_MODULE_NEST_PROVIDER)
     private readonly logger: Logger,
-  ) {}
+  ) {
+    super();
+  }
 
-  @Process('create-person')
-  async personCreatedResponder(job: Job<Person>) {
-    const person = job.data;
+  async process(job: Job<Person>): Promise<Person> {
     this.logger.log(
-      `Processing create-person job for person id ${person.id}`,
+      `Processing ${job.name} job ${job.id} for person id ${job.data.id}`,
       PersonConsumer.name,
     );
-    return person;
+    return job.data;
   }
 }

@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
-import { InjectQueue } from '@nestjs/bull';
-import { Queue } from 'bull';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { Person } from './person.types';
 import { CreatePersonInput } from './person.dto';
 import { PersonRepository } from './person.repository';

@@ -22,7 +22,7 @@ import {
   WinstonModule,
 } from 'nest-winston';
 import * as winston from 'winston';
-import { BullModule } from '@nestjs/bull';
+import { BullModule } from '@nestjs/bullmq';
 import { join } from 'path';
 import { otelTransport } from './monitoring/tracer';
 import { extendSchema, parse } from 'graphql';
@@ -173,11 +173,17 @@ function buildGraphQLModule(): DynamicModule {
     }),
     BullModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        redis: {
+      useFactory: (configService: ConfigService) => ({
+        connection: {
           host: configService.get<string>('redis.host'),
           port: configService.get<number>('redis.port'),
           password: configService.get<string>('redis.password'),
+        },
+        defaultJobOptions: {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 1000 },
+          removeOnComplete: { count: 100 },
+          removeOnFail: { count: 500 },
         },
       }),
       inject: [ConfigService],
