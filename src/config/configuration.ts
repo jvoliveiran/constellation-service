@@ -30,6 +30,9 @@ export const configuration = () => ({
       process.env.NODE_ENV ||
       'development',
   },
+  auditRetention: {
+    retentionDays: parseInt(process.env.AUDIT_RETENTION_DAYS || '90', 10),
+  },
   cors: {
     frontendOrigins: process.env.FRONTEND_ORIGINS || '',
   },

@@ -15,3 +15,22 @@ model Person {
 
   @@index([createdAt(sort: Desc), id(sort: Desc)])
 }
+
+model AuditLog {
+  id            Int      @id @default(autoincrement())
+  action        String
+  userId        String?  @map("user_id")
+  targetType    String?  @map("target_type")
+  targetId      String?  @map("target_id")
+  metadata      Json?
+  ipAddress     String?  @map("ip_address")
+  userAgent     String?  @map("user_agent")
+  correlationId String?  @map("correlation_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([targetType, targetId])
+  @@map("audit_log")
+}

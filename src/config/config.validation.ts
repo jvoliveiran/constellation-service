@@ -24,6 +24,9 @@ export const configValidationSchema = z
     // Cache
     CACHE_DEFAULT_TTL_SECONDS: z.coerce.number().min(1).default(60),
 
+    // Audit
+    AUDIT_RETENTION_DAYS: z.coerce.number().min(1).default(90),
+
     // CORS
     FRONTEND_ORIGINS: z.string().optional().default(''),
 
