@@ -8,6 +8,8 @@ import { PersonRepository } from './person.repository';
 import { CursorPaginationArgs } from '../common/dto/cursor-pagination.args';
 import { CursorPaginatedResult } from '../common/dto/cursor-paginated-response.factory';
 import { encodeCursor, decodeCursor } from '../common/utils/cursor.utils';
+import { CreatePersonResult } from './dto/create-person.result';
+import { FieldError } from '../common/graphql/types/field-error.type';
 
 @Injectable()
 export class PersonService {
@@ -55,8 +57,19 @@ export class PersonService {
     return person;
   }
 
-  async create(personInput: CreatePersonInput): Promise<Person> {
+  async create(
+    personInput: CreatePersonInput,
+  ): Promise<typeof CreatePersonResult> {
     this.logger.debug('Creating person', PersonService.name);
+
+    const fieldErrors = this.validateBusinessRules(personInput);
+    if (fieldErrors.length > 0) {
+      this.logger.warn('Person creation validation failed', {
+        fieldErrors,
+        context: PersonService.name,
+      });
+      return { message: 'Validation failed', fieldErrors };
+    }
 
     const person = await this.personRepository.create(personInput);
 
@@ -67,6 +80,20 @@ export class PersonService {
       jobId: job.id,
     });
 
-    return person;
+    return { person };
+  }
+
+  private validateBusinessRules(input: CreatePersonInput): FieldError[] {
+    const errors: FieldError[] = [];
+
+    if (input.name.trim().length === 0) {
+      errors.push({ field: 'name', message: 'Name must not be empty' });
+    }
+
+    if (input.age < 1) {
+      errors.push({ field: 'age', message: 'Age must be at least 1' });
+    }
+
+    return errors;
   }
 }

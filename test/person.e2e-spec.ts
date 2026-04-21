@@ -233,9 +233,13 @@ describe('PersonModule (e2e)', () => {
     const mutationData = {
       query: `mutation CreatePerson($person: CreatePersonInput!) {
         createPerson(person: $person) {
-          age
-          id
-          name
+          ... on CreatePersonSuccess {
+            person { id name age }
+          }
+          ... on ValidationErrorResult {
+            message
+            fieldErrors { field message }
+          }
         }
       }`,
       variables: { person: personInput },
@@ -249,9 +253,9 @@ describe('PersonModule (e2e)', () => {
       .expect('Content-Type', /json/)
       .expect(200);
 
-    expect(response.body.data.createPerson.name).toBe(personInput.name);
-    expect(response.body.data.createPerson.age).toBe(personInput.age);
-    expect(response.body.data.createPerson.id).toBeGreaterThanOrEqual(1);
+    expect(response.body.data.createPerson.person.name).toBe(personInput.name);
+    expect(response.body.data.createPerson.person.age).toBe(personInput.age);
+    expect(response.body.data.createPerson.person.id).toBeGreaterThanOrEqual(1);
   });
 
   it('should not add a new person without authentication', async () => {
@@ -262,9 +266,13 @@ describe('PersonModule (e2e)', () => {
     const mutationData = {
       query: `mutation CreatePerson($person: CreatePersonInput!) {
         createPerson(person: $person) {
-          age
-          id
-          name
+          ... on CreatePersonSuccess {
+            person { id name age }
+          }
+          ... on ValidationErrorResult {
+            message
+            fieldErrors { field message }
+          }
         }
       }`,
       variables: { person: personInput },
@@ -292,9 +300,13 @@ describe('PersonModule (e2e)', () => {
     const mutationData = {
       query: `mutation CreatePerson($person: CreatePersonInput!) {
         createPerson(person: $person) {
-          age
-          id
-          name
+          ... on CreatePersonSuccess {
+            person { id name age }
+          }
+          ... on ValidationErrorResult {
+            message
+            fieldErrors { field message }
+          }
         }
       }`,
       variables: { person: personInput },

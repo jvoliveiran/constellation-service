@@ -9,6 +9,7 @@ import {
 import { Person, CursorPaginatedPersonResponse } from './person.types';
 import { PersonService } from './person.service';
 import { CreatePersonInput } from './person.dto';
+import { CreatePersonResult } from './dto/create-person.result';
 import { Inject, Logger } from '@nestjs/common';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { Public } from '../graphql/decorators/public.decorator';
@@ -35,10 +36,10 @@ export class PersonResolver {
     return await this.personService.findOne(id);
   }
 
-  @Mutation(() => Person)
+  @Mutation(() => CreatePersonResult, { description: 'Create a new person.' })
   async createPerson(
     @Args('person') person: CreatePersonInput,
-  ): Promise<Person> {
+  ): Promise<typeof CreatePersonResult> {
     return await this.personService.create(person);
   }
 
