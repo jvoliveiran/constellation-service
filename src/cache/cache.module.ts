@@ -1,0 +1,50 @@
+import { Global, Module } from '@nestjs/common';
+import {
+  CacheModule as NestCacheModule,
+  CacheModuleAsyncOptions,
+} from '@nestjs/cache-manager';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import Keyv from 'keyv';
+import KeyvRedis from '@keyv/redis';
+import { CacheService } from './cache.service';
+
+const cacheModuleOptions: CacheModuleAsyncOptions = {
+  imports: [ConfigModule],
+  useFactory: (configService: ConfigService) => {
+    const isTest = configService.get('app.nodeEnv') === 'test';
+
+    if (isTest) {
+      return { ttl: 0 };
+    }
+
+    const redisHost = configService.get<string>('redis.host');
+    const redisPort = configService.get<number>('redis.port');
+    const redisPassword = configService.get<string>('redis.password');
+
+    const redisUrl = redisPassword
+      ? `redis://:${redisPassword}@${redisHost}:${redisPort}`
+      : `redis://${redisHost}:${redisPort}`;
+
+    const defaultTtlSeconds =
+      configService.get<number>('cache.defaultTtlSeconds') ?? 60;
+
+    return {
+      stores: [
+        new Keyv({
+          store: new KeyvRedis(redisUrl),
+          namespace: 'constellation',
+        }),
+      ],
+      ttl: defaultTtlSeconds * 1000,
+    };
+  },
+  inject: [ConfigService],
+};
+
+@Global()
+@Module({
+  imports: [NestCacheModule.registerAsync(cacheModuleOptions)],
+  providers: [CacheService],
+  exports: [NestCacheModule, CacheService],
+})
+export class CacheModule {}

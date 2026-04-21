@@ -21,6 +21,9 @@ export const configValidationSchema = z
     REDIS_PORT: z.coerce.number().default(6379),
     REDIS_PASSWORD: z.string().default(''),
 
+    // Cache
+    CACHE_DEFAULT_TTL_SECONDS: z.coerce.number().min(1).default(60),
+
     // CORS
     FRONTEND_ORIGINS: z.string().optional().default(''),
 
