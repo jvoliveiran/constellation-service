@@ -9,6 +9,7 @@ export type JwtPayload = {
   email: string;
   roles: string[];
   permissions: string[];
+  jti?: string;
 };
 
 export function isJwtPayload(value: unknown): value is JwtPayload {

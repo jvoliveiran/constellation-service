@@ -12,6 +12,7 @@ import { GqlExecutionContext } from '@nestjs/graphql';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { isJwtPayload } from '../types';
+import { TokenRevocationService } from '../../auth/token-revocation.service';
 
 const USER_CONTEXT_HEADER = 'x-user-context';
 
@@ -24,6 +25,7 @@ export class GatewayAuthGuard implements CanActivate {
     private readonly configService: ConfigService,
     @Inject(WINSTON_MODULE_NEST_PROVIDER)
     private readonly logger: Logger,
+    private readonly tokenRevocationService: TokenRevocationService,
   ) {
     this.federationEnabled = this.configService.get<boolean>(
       'app.federationEnabled',
@@ -31,7 +33,7 @@ export class GatewayAuthGuard implements CanActivate {
     );
   }
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -93,6 +95,19 @@ export class GatewayAuthGuard implements CanActivate {
         context: GatewayAuthGuard.name,
       });
       throw new UnauthorizedException('Invalid user context payload');
+    }
+
+    if (parsed.jti) {
+      const isRevoked = await this.tokenRevocationService.isRevoked(parsed.jti);
+      if (isRevoked) {
+        this.logger.warn('Revoked token rejected', {
+          jti: parsed.jti,
+          userId: parsed.sub,
+          correlationId,
+          context: GatewayAuthGuard.name,
+        });
+        throw new UnauthorizedException('Token has been revoked');
+      }
     }
 
     req.user = parsed;

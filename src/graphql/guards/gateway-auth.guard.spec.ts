@@ -4,6 +4,7 @@ import { Reflector } from '@nestjs/core';
 import { GqlExecutionContext } from '@nestjs/graphql';
 import { GatewayAuthGuard } from './gateway-auth.guard';
 import { JwtPayload } from '../types';
+import { TokenRevocationService } from '../../auth/token-revocation.service';
 
 jest.mock('@nestjs/graphql', () => ({
   GqlExecutionContext: {
@@ -16,12 +17,18 @@ describe('GatewayAuthGuard', () => {
   let reflector: jest.Mocked<Reflector>;
   let configService: jest.Mocked<ConfigService>;
   let logger: { warn: jest.Mock; debug: jest.Mock };
+  let tokenRevocationService: { isRevoked: jest.Mock };
 
   const validPayload: JwtPayload = {
     sub: 'user-123',
     email: 'test@example.com',
     roles: ['admin'],
     permissions: ['person:read'],
+  };
+
+  const validPayloadWithJti: JwtPayload = {
+    ...validPayload,
+    jti: 'token-jti-abc',
   };
 
   function encodePayload(payload: unknown): string {
@@ -60,7 +67,12 @@ describe('GatewayAuthGuard', () => {
         }),
     } as unknown as jest.Mocked<ConfigService>;
 
-    guard = new GatewayAuthGuard(reflector, configService, logger as never);
+    guard = new GatewayAuthGuard(
+      reflector,
+      configService,
+      logger as never,
+      tokenRevocationService as unknown as TokenRevocationService,
+    );
   }
 
   beforeEach(() => {
@@ -73,15 +85,19 @@ describe('GatewayAuthGuard', () => {
       debug: jest.fn(),
     };
 
+    tokenRevocationService = {
+      isRevoked: jest.fn().mockResolvedValue(false),
+    };
+
     createGuard(true);
   });
 
-  it('allows access and sets req.user for a valid x-user-context header', () => {
+  it('allows access and sets req.user for a valid x-user-context header', async () => {
     const { executionContext, req } = buildMockContext({
       'x-user-context': encodePayload(validPayload),
     });
 
-    expect(guard.canActivate(executionContext)).toBe(true);
+    await expect(guard.canActivate(executionContext)).resolves.toBe(true);
     expect(req.user).toEqual(validPayload);
     expect(logger.debug).toHaveBeenCalledWith(
       'Gateway auth context parsed successfully',
@@ -89,17 +105,17 @@ describe('GatewayAuthGuard', () => {
     );
   });
 
-  it('skips validation for public routes', () => {
+  it('skips validation for public routes', async () => {
     reflector.getAllAndOverride.mockReturnValue(true);
     const { executionContext } = buildMockContext({});
 
-    expect(guard.canActivate(executionContext)).toBe(true);
+    await expect(guard.canActivate(executionContext)).resolves.toBe(true);
   });
 
-  it('throws UnauthorizedException when x-user-context header is missing', () => {
+  it('throws UnauthorizedException when x-user-context header is missing', async () => {
     const { executionContext } = buildMockContext({});
 
-    expect(() => guard.canActivate(executionContext)).toThrow(
+    await expect(guard.canActivate(executionContext)).rejects.toThrow(
       UnauthorizedException,
     );
     expect(logger.warn).toHaveBeenCalledWith(
@@ -108,24 +124,24 @@ describe('GatewayAuthGuard', () => {
     );
   });
 
-  it('throws UnauthorizedException for invalid base64', () => {
+  it('throws UnauthorizedException for invalid base64', async () => {
     const { executionContext } = buildMockContext({
       'x-user-context': '!!!not-valid-base64!!!',
     });
 
     // Buffer.from with 'base64' does not throw for invalid input — it decodes garbage.
     // The JSON.parse step catches this as invalid JSON.
-    expect(() => guard.canActivate(executionContext)).toThrow(
+    await expect(guard.canActivate(executionContext)).rejects.toThrow(
       UnauthorizedException,
     );
   });
 
-  it('throws UnauthorizedException for valid base64 but invalid JSON', () => {
+  it('throws UnauthorizedException for valid base64 but invalid JSON', async () => {
     const { executionContext } = buildMockContext({
       'x-user-context': Buffer.from('not-json').toString('base64'),
     });
 
-    expect(() => guard.canActivate(executionContext)).toThrow(
+    await expect(guard.canActivate(executionContext)).rejects.toThrow(
       UnauthorizedException,
     );
     expect(logger.warn).toHaveBeenCalledWith(
@@ -134,13 +150,13 @@ describe('GatewayAuthGuard', () => {
     );
   });
 
-  it('throws UnauthorizedException when payload fails type guard', () => {
+  it('throws UnauthorizedException when payload fails type guard', async () => {
     const incompletePayload = { sub: 'user-123', email: 'test@example.com' };
     const { executionContext } = buildMockContext({
       'x-user-context': encodePayload(incompletePayload),
     });
 
-    expect(() => guard.canActivate(executionContext)).toThrow(
+    await expect(guard.canActivate(executionContext)).rejects.toThrow(
       UnauthorizedException,
     );
     expect(logger.warn).toHaveBeenCalledWith(
@@ -149,30 +165,76 @@ describe('GatewayAuthGuard', () => {
     );
   });
 
-  it('throws UnauthorizedException when payload is a string', () => {
+  it('throws UnauthorizedException when payload is a string', async () => {
     const { executionContext } = buildMockContext({
       'x-user-context': encodePayload('just-a-string'),
     });
 
-    expect(() => guard.canActivate(executionContext)).toThrow(
+    await expect(guard.canActivate(executionContext)).rejects.toThrow(
       UnauthorizedException,
     );
   });
 
-  it('throws UnauthorizedException when payload is null', () => {
+  it('throws UnauthorizedException when payload is null', async () => {
     const { executionContext } = buildMockContext({
       'x-user-context': encodePayload(null),
     });
 
-    expect(() => guard.canActivate(executionContext)).toThrow(
+    await expect(guard.canActivate(executionContext)).rejects.toThrow(
       UnauthorizedException,
     );
   });
 
-  it('allows access without x-user-context when federation is disabled', () => {
+  it('allows access without x-user-context when federation is disabled', async () => {
     createGuard(false);
     const { executionContext } = buildMockContext({});
 
-    expect(guard.canActivate(executionContext)).toBe(true);
+    await expect(guard.canActivate(executionContext)).resolves.toBe(true);
+  });
+
+  describe('token revocation', () => {
+    it('rejects a request with a revoked token', async () => {
+      tokenRevocationService.isRevoked.mockResolvedValue(true);
+      const { executionContext } = buildMockContext({
+        'x-user-context': encodePayload(validPayloadWithJti),
+      });
+
+      await expect(guard.canActivate(executionContext)).rejects.toThrow(
+        new UnauthorizedException('Token has been revoked'),
+      );
+      expect(tokenRevocationService.isRevoked).toHaveBeenCalledWith(
+        'token-jti-abc',
+      );
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Revoked token rejected',
+        expect.objectContaining({
+          jti: 'token-jti-abc',
+          userId: 'user-123',
+        }),
+      );
+    });
+
+    it('allows a request with a valid non-revoked token', async () => {
+      tokenRevocationService.isRevoked.mockResolvedValue(false);
+      const { executionContext, req } = buildMockContext({
+        'x-user-context': encodePayload(validPayloadWithJti),
+      });
+
+      await expect(guard.canActivate(executionContext)).resolves.toBe(true);
+      expect(tokenRevocationService.isRevoked).toHaveBeenCalledWith(
+        'token-jti-abc',
+      );
+      expect(req.user).toEqual(validPayloadWithJti);
+    });
+
+    it('skips revocation check when jti is missing from payload', async () => {
+      const { executionContext, req } = buildMockContext({
+        'x-user-context': encodePayload(validPayload),
+      });
+
+      await expect(guard.canActivate(executionContext)).resolves.toBe(true);
+      expect(tokenRevocationService.isRevoked).not.toHaveBeenCalled();
+      expect(req.user).toEqual(validPayload);
+    });
   });
 });

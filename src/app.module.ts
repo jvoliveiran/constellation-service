@@ -38,6 +38,7 @@ import { UserReferenceModule } from './graphql/entities/user-reference.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { GqlThrottlerGuard } from './common/guards/gql-throttler.guard';
 import { CacheModule } from './cache/cache.module';
+import { AuthModule } from './auth/auth.module';
 import { validateConfig } from './config/config.validation';
 import { configuration } from './config/configuration';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
@@ -193,6 +194,7 @@ function buildGraphQLModule(): DynamicModule {
       throttlers: [{ ttl: 60000, limit: 100 }],
     }),
     CacheModule,
+    AuthModule,
     HealthModule,
     PrismaModule,
     PersonModule,
