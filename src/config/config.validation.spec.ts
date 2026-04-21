@@ -54,6 +54,7 @@ describe('validateConfig', () => {
           ...(env === 'production'
             ? {
                 FRONTEND_ORIGINS: 'https://app.example.com',
+                AWS_SES_REGION: 'us-east-1',
               }
             : {}),
         };
@@ -111,6 +112,7 @@ describe('validateConfig', () => {
       const result = validateConfig({
         ...productionEnv,
         FRONTEND_ORIGINS: 'https://app.example.com,https://admin.example.com',
+        AWS_SES_REGION: 'us-east-1',
       });
 
       expect(result.FRONTEND_ORIGINS).toBe(

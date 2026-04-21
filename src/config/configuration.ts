@@ -30,6 +30,20 @@ export const configuration = () => ({
       process.env.NODE_ENV ||
       'development',
   },
+  email: {
+    smtpHost: process.env.SMTP_HOST || 'localhost',
+    smtpPort: parseInt(process.env.SMTP_PORT ?? '1025', 10),
+    fromAddress:
+      process.env.EMAIL_FROM_ADDRESS || 'noreply@constellation.local',
+    fromName: process.env.EMAIL_FROM_NAME || 'Constellation Service',
+  },
+  aws: {
+    ses: {
+      region: process.env.AWS_SES_REGION || '',
+      accessKeyId: process.env.AWS_SES_ACCESS_KEY_ID || '',
+      secretAccessKey: process.env.AWS_SES_SECRET_ACCESS_KEY || '',
+    },
+  },
   auditRetention: {
     retentionDays: parseInt(process.env.AUDIT_RETENTION_DAYS || '90', 10),
   },

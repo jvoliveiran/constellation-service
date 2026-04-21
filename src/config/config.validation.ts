@@ -27,6 +27,17 @@ export const configValidationSchema = z
     // Audit
     AUDIT_RETENTION_DAYS: z.coerce.number().min(1).default(90),
 
+    // Email - SMTP
+    SMTP_HOST: z.string().default('localhost'),
+    SMTP_PORT: z.coerce.number().default(1025),
+    EMAIL_FROM_ADDRESS: z.string().default('noreply@constellation.local'),
+    EMAIL_FROM_NAME: z.string().default('Constellation Service'),
+
+    // Email - AWS SES
+    AWS_SES_REGION: z.string().optional(),
+    AWS_SES_ACCESS_KEY_ID: z.string().optional(),
+    AWS_SES_SECRET_ACCESS_KEY: z.string().optional(),
+
     // CORS
     FRONTEND_ORIGINS: z.string().optional().default(''),
 
@@ -44,6 +55,14 @@ export const configValidationSchema = z
   })
   .superRefine((data, ctx) => {
     if (data.NODE_ENV === 'production') {
+      if (!data.AWS_SES_REGION) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['AWS_SES_REGION'],
+          message: 'AWS_SES_REGION is required in production.',
+        });
+      }
+
       if (!data.FRONTEND_ORIGINS) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,

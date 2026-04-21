@@ -40,6 +40,7 @@ import { GqlThrottlerGuard } from './common/guards/gql-throttler.guard';
 import { CacheModule } from './cache/cache.module';
 import { AuthModule } from './auth/auth.module';
 import { AuditModule } from './audit/audit.module';
+import { EmailModule } from './email/email.module';
 import { validateConfig } from './config/config.validation';
 import { configuration } from './config/configuration';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
@@ -197,6 +198,7 @@ function buildGraphQLModule(): DynamicModule {
     CacheModule,
     AuthModule,
     AuditModule,
+    EmailModule,
     HealthModule,
     PrismaModule,
     PersonModule,
