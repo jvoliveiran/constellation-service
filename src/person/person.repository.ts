@@ -1,12 +1,12 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
+import { Person as PrismaPerson } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { Person } from './person.types';
 import { CreatePersonInput } from './person.dto';
 import { DecodedCursor } from '../common/types/decoded-cursor.types';
 
 type FindManyResult = {
-  items: Person[];
+  items: PrismaPerson[];
   hasMore: boolean;
 };
 
@@ -58,7 +58,7 @@ export class PersonRepository {
     return this.prisma.person.count();
   }
 
-  async findById(id: number): Promise<Person | null> {
+  async findById(id: number): Promise<PrismaPerson | null> {
     this.logger.debug(`Finding person by id=${id}`, PersonRepository.name);
 
     return this.prisma.person.findUnique({
@@ -66,7 +66,7 @@ export class PersonRepository {
     });
   }
 
-  async create(data: CreatePersonInput): Promise<Person> {
+  async create(data: CreatePersonInput): Promise<PrismaPerson> {
     const person = await this.prisma.person.create({
       data,
     });

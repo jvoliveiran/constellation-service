@@ -7,9 +7,11 @@ import { CreatePersonInput } from './person.dto';
 import { PersonRepository } from './person.repository';
 import { CursorPaginationArgs } from '../common/dto/cursor-pagination.args';
 import { CursorPaginatedResult } from '../common/dto/cursor-paginated-response.factory';
-import { encodeCursor, decodeCursor } from '../common/utils/cursor.utils';
+import { decodeCursor } from '../common/utils/cursor.utils';
 import { CreatePersonResult } from './dto/create-person.result';
 import { FieldError } from '../common/graphql/types/field-error.type';
+import { mapPrismaPersonToGraphql } from './mappers/prisma-person.mapper';
+import { mapToCursorPaginatedPersonResponse } from './mappers/cursor-person.mapper';
 
 @Injectable()
 export class PersonService {
@@ -35,26 +37,21 @@ export class PersonService {
       afterCursor,
     );
 
-    const lastItem = items[items.length - 1];
-    const endCursor = lastItem
-      ? encodeCursor(lastItem.createdAt, lastItem.id)
-      : null;
-
     const total = await this.personRepository.count();
 
-    return { items, hasMore, endCursor, total };
+    return mapToCursorPaginatedPersonResponse({ items, hasMore, total });
   }
 
   async findOne(id: number): Promise<Person> {
     this.logger.debug('Finding one person', PersonService.name);
 
-    const person = await this.personRepository.findById(id);
+    const prismaPerson = await this.personRepository.findById(id);
 
-    if (!person) {
+    if (!prismaPerson) {
       throw new NotFoundException(`Person with id ${id} not found`);
     }
 
-    return person;
+    return mapPrismaPersonToGraphql(prismaPerson);
   }
 
   async create(
@@ -71,7 +68,8 @@ export class PersonService {
       return { message: 'Validation failed', fieldErrors };
     }
 
-    const person = await this.personRepository.create(personInput);
+    const prismaPerson = await this.personRepository.create(personInput);
+    const person = mapPrismaPersonToGraphql(prismaPerson);
 
     const job = await this.personQueue.add('create-person', person);
 
