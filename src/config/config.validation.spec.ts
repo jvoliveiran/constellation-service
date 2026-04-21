@@ -5,6 +5,14 @@ const validEnv = {
   DATABASE_URL: 'postgresql://localhost:5432/testdb',
 };
 
+const validProductionEnv = {
+  ...validEnv,
+  NODE_ENV: 'production',
+  JWT_SECRET: 'a-very-long-secret-that-is-at-least-32-characters',
+  FRONTEND_ORIGINS: 'https://app.example.com',
+  AWS_SES_REGION: 'us-east-1',
+};
+
 describe('validateConfig', () => {
   describe('when environment is valid', () => {
     it('applies defaults for optional fields', () => {
@@ -53,6 +61,7 @@ describe('validateConfig', () => {
           NODE_ENV: env,
           ...(env === 'production'
             ? {
+                JWT_SECRET: 'a-very-long-secret-that-is-at-least-32-characters',
                 FRONTEND_ORIGINS: 'https://app.example.com',
                 AWS_SES_REGION: 'us-east-1',
               }
@@ -88,36 +97,113 @@ describe('validateConfig', () => {
   });
 
   describe('when NODE_ENV is production', () => {
-    const productionEnv = {
-      ...validEnv,
-      NODE_ENV: 'production',
-    };
-
-    it('throws when FRONTEND_ORIGINS is missing', () => {
-      expect(() => validateConfig(productionEnv)).toThrow(
-        'FRONTEND_ORIGINS must contain at least one valid origin',
-      );
-    });
-
-    it('throws when FRONTEND_ORIGINS is empty after trimming', () => {
-      expect(() =>
-        validateConfig({
-          ...productionEnv,
-          FRONTEND_ORIGINS: '  ,  , ',
-        }),
-      ).toThrow('FRONTEND_ORIGINS must contain at least one valid origin');
-    });
-
-    it('passes when FRONTEND_ORIGINS is provided', () => {
+    it('passes with all required production fields', () => {
       const result = validateConfig({
-        ...productionEnv,
+        ...validProductionEnv,
         FRONTEND_ORIGINS: 'https://app.example.com,https://admin.example.com',
-        AWS_SES_REGION: 'us-east-1',
       });
 
       expect(result.FRONTEND_ORIGINS).toBe(
         'https://app.example.com,https://admin.example.com',
       );
+    });
+
+    it('throws when JWT_SECRET is missing', () => {
+      expect(() =>
+        validateConfig({
+          ...validProductionEnv,
+          JWT_SECRET: '',
+        }),
+      ).toThrow('JWT_SECRET must be at least 32 characters in production');
+    });
+
+    it('throws when JWT_SECRET is shorter than 32 characters', () => {
+      expect(() =>
+        validateConfig({
+          ...validProductionEnv,
+          JWT_SECRET: 'short-secret',
+        }),
+      ).toThrow('JWT_SECRET must be at least 32 characters in production');
+    });
+
+    it('throws when FRONTEND_ORIGINS is missing', () => {
+      expect(() =>
+        validateConfig({
+          ...validProductionEnv,
+          FRONTEND_ORIGINS: '',
+        }),
+      ).toThrow('FRONTEND_ORIGINS must contain at least one valid origin');
+    });
+
+    it('throws when FRONTEND_ORIGINS is empty after trimming', () => {
+      expect(() =>
+        validateConfig({
+          ...validProductionEnv,
+          FRONTEND_ORIGINS: '  ,  , ',
+        }),
+      ).toThrow('FRONTEND_ORIGINS must contain at least one valid origin');
+    });
+
+    it('throws when FRONTEND_ORIGINS contains an invalid URL', () => {
+      expect(() =>
+        validateConfig({
+          ...validProductionEnv,
+          FRONTEND_ORIGINS: 'https://valid.com,not-a-url',
+        }),
+      ).toThrow('Invalid CORS origin URL: not-a-url');
+    });
+
+    it('throws when LOG_LEVEL is debug in production', () => {
+      expect(() =>
+        validateConfig({
+          ...validProductionEnv,
+          LOG_LEVEL: 'debug',
+        }),
+      ).toThrow('LOG_LEVEL must be "info", "warn", or "error" in production');
+    });
+
+    it('throws when LOG_LEVEL is verbose in production', () => {
+      expect(() =>
+        validateConfig({
+          ...validProductionEnv,
+          LOG_LEVEL: 'verbose',
+        }),
+      ).toThrow('LOG_LEVEL must be "info", "warn", or "error" in production');
+    });
+
+    it('accepts LOG_LEVEL info in production', () => {
+      const result = validateConfig({
+        ...validProductionEnv,
+        LOG_LEVEL: 'info',
+      });
+      expect(result.LOG_LEVEL).toBe('info');
+    });
+  });
+
+  describe('dev and test environments bypass production rules', () => {
+    it('allows short JWT_SECRET in development', () => {
+      const result = validateConfig({
+        ...validEnv,
+        JWT_SECRET: 'short',
+      });
+      expect(result.JWT_SECRET).toBe('short');
+    });
+
+    it('allows debug LOG_LEVEL in development', () => {
+      const result = validateConfig({
+        ...validEnv,
+        LOG_LEVEL: 'debug',
+      });
+      expect(result.LOG_LEVEL).toBe('debug');
+    });
+
+    it('allows empty FRONTEND_ORIGINS in test', () => {
+      const result = validateConfig({
+        ...validEnv,
+        NODE_ENV: 'test',
+        FRONTEND_ORIGINS: '',
+      });
+      expect(result.FRONTEND_ORIGINS).toBe('');
     });
   });
 

@@ -25,7 +25,8 @@
     "prisma:migration": "npx prisma migrate dev --name",
     "prisma:reset": "npx prisma migrate reset",
     "prisma:seed": "ts-node prisma/seed.ts",
-    "prisma:ui": "npx prisma studio"
+    "prisma:ui": "npx prisma studio",
+    "audit:security": "npm audit --audit-level=high"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

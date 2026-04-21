@@ -12,6 +12,7 @@ import { CreatePersonInput } from './person.dto';
 import { CreatePersonResult } from './dto/create-person.result';
 import { Inject, Logger } from '@nestjs/common';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
+import { Throttle } from '@nestjs/throttler';
 import { Public } from '../graphql/decorators/public.decorator';
 import { CursorPaginationArgs } from '../common/dto/cursor-pagination.args';
 
@@ -36,6 +37,7 @@ export class PersonResolver {
     return await this.personService.findOne(id);
   }
 
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
   @Mutation(() => CreatePersonResult, { description: 'Create a new person.' })
   async createPerson(
     @Args('person') person: CreatePersonInput,

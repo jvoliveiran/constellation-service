@@ -12,6 +12,7 @@ export const configValidationSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((val) => val === 'true'),
+    JWT_SECRET: z.string().default(''),
 
     // Database
     DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
@@ -55,6 +56,14 @@ export const configValidationSchema = z
   })
   .superRefine((data, ctx) => {
     if (data.NODE_ENV === 'production') {
+      if (!data.JWT_SECRET || data.JWT_SECRET.length < 32) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['JWT_SECRET'],
+          message: 'JWT_SECRET must be at least 32 characters in production.',
+        });
+      }
+
       if (!data.AWS_SES_REGION) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -63,7 +72,7 @@ export const configValidationSchema = z
         });
       }
 
-      if (!data.FRONTEND_ORIGINS) {
+      if (!data.FRONTEND_ORIGINS || data.FRONTEND_ORIGINS.trim() === '') {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['FRONTEND_ORIGINS'],
@@ -82,6 +91,26 @@ export const configValidationSchema = z
               'FRONTEND_ORIGINS must contain at least one valid origin in production.',
           });
         }
+        for (const origin of origins) {
+          try {
+            new URL(origin);
+          } catch {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['FRONTEND_ORIGINS'],
+              message: `Invalid CORS origin URL: ${origin}`,
+            });
+          }
+        }
+      }
+
+      if (data.LOG_LEVEL === 'debug' || data.LOG_LEVEL === 'verbose') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['LOG_LEVEL'],
+          message:
+            'LOG_LEVEL must be "info", "warn", or "error" in production.',
+        });
       }
     }
   });
