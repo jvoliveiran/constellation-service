@@ -47,6 +47,9 @@ export const configuration = () => ({
   auditRetention: {
     retentionDays: parseInt(process.env.AUDIT_RETENTION_DAYS || '90', 10),
   },
+  jwt: {
+    secret: process.env.JWT_SECRET || '',
+  },
   cors: {
     frontendOrigins: process.env.FRONTEND_ORIGINS || '',
   },

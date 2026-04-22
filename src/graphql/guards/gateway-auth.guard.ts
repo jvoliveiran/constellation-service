@@ -9,12 +9,14 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { GqlExecutionContext } from '@nestjs/graphql';
+import { JwtService } from '@nestjs/jwt';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { isJwtPayload } from '../types';
 import { TokenRevocationService } from '../../auth/token-revocation.service';
 
 const USER_CONTEXT_HEADER = 'x-user-context';
+const BEARER_PREFIX = 'Bearer ';
 
 @Injectable()
 export class GatewayAuthGuard implements CanActivate {
@@ -23,6 +25,7 @@ export class GatewayAuthGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly configService: ConfigService,
+    private readonly jwtService: JwtService,
     @Inject(WINSTON_MODULE_NEST_PROVIDER)
     private readonly logger: Logger,
     private readonly tokenRevocationService: TokenRevocationService,
@@ -43,14 +46,69 @@ export class GatewayAuthGuard implements CanActivate {
       return true;
     }
 
-    if (!this.federationEnabled) {
-      return true;
-    }
-
     const gqlContext = GqlExecutionContext.create(context);
     const { req } = gqlContext.getContext();
     const correlationId: string = req.correlationId ?? '';
 
+    if (this.federationEnabled) {
+      return this.validateGatewayContext(req, correlationId);
+    }
+
+    return this.validateBearerToken(req, correlationId);
+  }
+
+  private async validateBearerToken(
+    req: {
+      headers: Record<string, string | undefined>;
+      user?: unknown;
+      correlationId?: string;
+    },
+    correlationId: string,
+  ): Promise<boolean> {
+    const authHeader = req.headers['authorization'] as string | undefined;
+
+    if (!authHeader || !authHeader.startsWith(BEARER_PREFIX)) {
+      this.logger.warn('Missing or invalid Authorization header', {
+        correlationId,
+        reason: 'missing bearer token',
+        context: GatewayAuthGuard.name,
+      });
+      throw new UnauthorizedException('No authorization token provided');
+    }
+
+    const token = authHeader.slice(BEARER_PREFIX.length);
+
+    let payload: Record<string, unknown>;
+    try {
+      payload = this.jwtService.verify(token);
+    } catch {
+      this.logger.warn('Invalid JWT token', {
+        correlationId,
+        reason: 'jwt verification failed',
+        context: GatewayAuthGuard.name,
+      });
+      throw new UnauthorizedException('Invalid authorization token');
+    }
+
+    req.user = payload;
+
+    this.logger.debug('Bearer token validated successfully', {
+      userId: payload.sub,
+      correlationId,
+      context: GatewayAuthGuard.name,
+    });
+
+    return true;
+  }
+
+  private async validateGatewayContext(
+    req: {
+      headers: Record<string, string | undefined>;
+      user?: unknown;
+      correlationId?: string;
+    },
+    correlationId: string,
+  ): Promise<boolean> {
     const encodedContext = req.headers[USER_CONTEXT_HEADER] as
       | string
       | undefined;
