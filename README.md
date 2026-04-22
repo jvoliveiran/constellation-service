@@ -4,7 +4,7 @@
 
 ## Constellation Service
 
-NestJS GraphQL subgraph for an Apollo Federation v2 architecture. Provides a `Person` entity and supporting APIs, with Prisma (PostgreSQL), Bull (Redis) for background jobs, JWT authentication, cursor-based pagination, query complexity protection, health checks, structured logging via Winston, and full observability through OpenTelemetry (traces, metrics, logs). Infrastructure is managed with Terraform on AWS ECS Fargate.
+NestJS GraphQL subgraph for an Apollo Federation v2 architecture. Provides a `Person` entity and supporting APIs, with Prisma (PostgreSQL), BullMQ (Redis) for background jobs, federation-based authentication with token revocation, audit logging with scheduled cleanup, queue-backed email infrastructure, cursor-based pagination, query complexity protection, health checks, structured logging via Winston, and full observability through OpenTelemetry (traces, metrics, logs). Infrastructure is managed with Terraform on AWS ECS Fargate.
 
 ### Stack
 
@@ -14,9 +14,11 @@ NestJS GraphQL subgraph for an Apollo Federation v2 architecture. Provides a `Pe
 | **Framework** | NestJS | 10 |
 | **Language** | TypeScript | 5.1 (ES2021 target) |
 | **GraphQL** | Apollo Federation v2 | `@nestjs/apollo` 12, `@apollo/subgraph` 2.6 |
-| **Database** | PostgreSQL + Prisma | Prisma 5.12 |
-| **Queues** | Bull + Redis | Bull 4.12, Redis 7.2 |
-| **Authentication** | JWT | `@nestjs/jwt` 11 |
+| **Database** | PostgreSQL + Prisma | Prisma 5.22 |
+| **Queues** | BullMQ + Redis | BullMQ 5.75, Redis 7.2 |
+| **Authentication** | Federation gateway (JWT via `x-user-context`) | Token revocation via Redis |
+| **Email** | Nodemailer + AWS SES | SMTP (dev), SES (prod) |
+| **Caching** | Redis via `@nestjs/cache-manager` + Keyv | Keyv Redis adapter |
 | **Health** | `@nestjs/terminus` | 10.2 |
 | **Logging** | Winston + OpenTelemetry | `nest-winston` 1.9, `winston` 3.13 |
 | **Observability** | OpenTelemetry (OTLP) | Traces, metrics, and logs |
@@ -31,7 +33,7 @@ NestJS GraphQL subgraph for an Apollo Federation v2 architecture. Provides a `Pe
 
 ### Prerequisites
 - Node 20 (recommended: `nvm use`)
-- Docker and Docker Compose (for Postgres, Redis, Jaeger, and Prometheus)
+- Docker and Docker Compose (for Postgres, Redis, Jaeger, Prometheus, and MailHog)
 
 ### Install
 ```bash
@@ -45,6 +47,9 @@ Copy `.env.example` to `.env` and adjust values as needed:
 ```env
 # Service
 SERVICE_PORT=3000
+LOG_LEVEL=debug
+JWT_SECRET=your-jwt-secret-change-in-production
+FEDERATION_ENABLED=false
 
 # Database (used by prisma/schema.prisma via DATABASE_URL)
 DATABASE_USER=postgres
@@ -54,13 +59,25 @@ DATABASE_HOST=localhost
 DATABASE_PORT=5432
 DATABASE_URL=postgresql://${DATABASE_USER}:${DATABASE_PASSWORD}@${DATABASE_HOST}:${DATABASE_PORT}/${DATABASE_NAME}?schema=public
 
-# Redis (Bull)
+# Redis (BullMQ + Cache + Token Revocation)
 REDIS_HOST=localhost
 REDIS_PORT=6379
 REDIS_PASSWORD=password
+CACHE_DEFAULT_TTL_SECONDS=60
 
-# JWT
-JWT_SECRET=your-secret-key-change-in-production
+# Audit
+AUDIT_RETENTION_DAYS=90
+
+# Email - SMTP (development via MailHog)
+SMTP_HOST=localhost
+SMTP_PORT=1025
+EMAIL_FROM_ADDRESS=noreply@constellation.local
+EMAIL_FROM_NAME=Constellation Service
+
+# Email - AWS SES (production)
+AWS_SES_REGION=
+AWS_SES_ACCESS_KEY_ID=
+AWS_SES_SECRET_ACCESS_KEY=
 
 # CORS (required in production; comma-separated origins)
 FRONTEND_ORIGINS=http://localhost:3001
@@ -77,7 +94,7 @@ See the [Environment variables](#environment-variables) section for a full refer
 ### Development
 
 ```bash
-# Start Postgres, Redis, Jaeger, and Prometheus (docker-compose)
+# Start Postgres, Redis, Jaeger, Prometheus, and MailHog (docker-compose)
 npm run dev:up
 
 # Run Prisma migrations
@@ -110,21 +127,25 @@ Service runs on `http://localhost:${SERVICE_PORT || 3000}`.
 | `npm run test:cov` | Run tests with coverage report |
 | `npm run test:debug` | Run tests in debug mode |
 | `npm run test:e2e` | Run end-to-end tests |
+| `npm run test:e2e:up` | Start E2E test infrastructure (Docker Compose) |
+| `npm run test:e2e:down` | Stop E2E test infrastructure |
 | `npm run prisma:migration` | Create a new Prisma migration |
 | `npm run prisma:reset` | Reset database and re-apply migrations |
+| `npm run prisma:seed` | Seed the database |
 | `npm run prisma:ui` | Open Prisma Studio |
+| `npm run audit:security` | Run `npm audit --audit-level=high` |
 
 ## GraphQL
 
 ### Endpoint and tooling
 - **Endpoint**: `/graphql`
-- **Introspection**: enabled
+- **Introspection**: enabled in development
 - **Apollo Landing Page**: enabled in development
 - **Generated SDL**: `src/schema.gql` (auto-generated, do not edit directly)
 
 ### Federation
 
-The service is an Apollo Federation v2 subgraph, configured with `ApolloFederationDriver` and `autoSchemaFile` for automatic SDL generation.
+The service is an Apollo Federation v2 subgraph, configured with `ApolloFederationDriver` and `autoSchemaFile` for automatic SDL generation. Federation mode is controlled by `FEDERATION_ENABLED=true`.
 
 **Federation schema extensions:**
 ```graphql
@@ -137,7 +158,7 @@ extend schema
   @composeDirective(name: "@private")
 ```
 
-The `Person` entity is annotated with `@key(fields: "id")` and implements `resolveReference` in `PersonResolver` for cross-subgraph entity resolution. Gateways (e.g., Apollo Router) can fetch the SDL from `/graphql` for composition.
+The `Person` entity is annotated with `@key(fields: "id")` and implements `resolveReference` in `PersonResolver` for cross-subgraph entity resolution.
 
 ### Custom directives
 
@@ -146,15 +167,14 @@ The `Person` entity is annotated with `@key(fields: "id")` and implements `resol
 | `@public` | `FIELD_DEFINITION`, `OBJECT` | Marks fields/types as publicly accessible without authentication |
 | `@private` | `FIELD_DEFINITION`, `OBJECT` | Marks fields/types as requiring authentication (default behavior) |
 
-These are custom `@composeDirective`s exposed to the federation gateway for access control composition.
-
 ### Operations
 
-| Operation | Type | Auth | Input | Output |
-|-----------|------|------|-------|--------|
-| `getAll` | Query | Public (`@public`) | `CursorPaginationArgs` (optional) | `CursorPaginatedPersonResponse` |
-| `getOne` | Query | JWT required | `id: Int!` | `Person!` |
-| `createPerson` | Mutation | JWT required | `CreatePersonInput!` | `Person!` |
+| Operation | Type | Auth | Throttle | Input | Output |
+|-----------|------|------|----------|-------|--------|
+| `getAll` | Query | Public (`@Public`) | 100 req/60s (global) | `CursorPaginationArgs` (optional) | `CursorPaginatedPersonResponse` |
+| `getOne` | Query | JWT required | 100 req/60s (global) | `id: Int!` | `Person!` |
+| `createPerson` | Mutation | JWT required | 10 req/60s (per-route) | `CreatePersonInput!` | `CreatePersonResult` (union) |
+| `getAuditLogs` | Query | JWT + `audit:read` permission | 100 req/60s (global) | `AuditLogFilterInput` (optional) | `[AuditLog!]!` |
 
 **Example queries:**
 ```graphql
@@ -177,17 +197,23 @@ query {
   }
 }
 
-# Query one person (requires Authorization header with JWT)
+# Query one person (requires x-user-context header from gateway)
 query {
   getOne(id: 1) { id name age }
 }
 
-# Create a person (requires Authorization header with JWT)
+# Create a person (requires x-user-context header from gateway)
 mutation {
   createPerson(person: { name: "Ada", age: 36 }) {
-    id
-    name
-    age
+    ... on Person { id name age }
+    ... on ValidationError { message fieldErrors { field message } }
+  }
+}
+
+# Query audit logs (requires audit:read permission)
+query {
+  getAuditLogs(filter: { action: "PERSON_CREATED", first: 20 }) {
+    id action userId targetType targetId metadata createdAt
   }
 }
 ```
@@ -221,6 +247,7 @@ GraphQL queries are protected against abuse:
 | **Depth limit** | 10 | Maximum nesting depth for queries |
 | **Complexity limit** | 100 | Maximum query complexity score (each field = 1 point) |
 | **Rate limiting** | 100 req/60s | Global rate limit via `@nestjs/throttler` |
+| **Per-route throttle** | 10 req/60s | `createPerson` mutation has a stricter limit |
 
 ### Input validation
 
@@ -228,39 +255,111 @@ GraphQL queries are protected against abuse:
 - `name`: must not be empty
 - `age`: must not be empty, minimum value of 1
 
-Validation is enforced globally via `ValidationPipe` in `main.ts`.
+Validation is enforced globally via `ValidationPipe` in `main.ts` with `whitelist: true` and `forbidNonWhitelisted: true` (rejects unknown fields). Error messages are disabled in production.
 
-## Authentication
+## Authentication and authorization
 
-JWT-based authentication is applied globally via `JwtAuthGuard` (registered as `APP_GUARD`). All resolvers require a valid JWT token by default.
+Authentication is handled via the **federation gateway**. When `FEDERATION_ENABLED=true`, the `GatewayAuthGuard` (registered as `APP_GUARD`) decodes the `x-user-context` base64-encoded header set by the gateway. This header contains the JWT payload with `sub`, `email`, `roles`, `permissions`, and an optional `jti` (JWT ID) for token revocation.
+
+When federation is disabled, the guard allows all requests through (standalone development mode).
 
 To make a resolver or query publicly accessible, use the `@Public()` decorator:
 ```ts
 @Public()
-@Query(() => [Person])
+@Query(() => CursorPaginatedPersonResponse)
 getAll() { ... }
 ```
 
-**Configuration:**
-- Secret: `JWT_SECRET` environment variable
-- Token expiry: 1 hour
-- Header: `Authorization: Bearer <token>`
+### Token revocation
 
-**Available decorators:**
+The `TokenRevocationService` (in `src/auth/`) provides Redis-backed JWT token invalidation:
+
+- **`revoke(jti, ttlSeconds)`**: Stores the JTI in Redis with key `revoked-jti:{jti}` and a TTL matching the token's remaining lifetime
+- **`isRevoked(jti)`**: Checks if a JTI has been revoked (O(1) Redis `EXISTS`)
+- **Fail-open strategy**: If Redis is unavailable, requests are allowed through and a warning is logged
+- **Guard integration**: `GatewayAuthGuard` checks `isRevoked()` for every request that includes a `jti` in the payload. Tokens without a `jti` skip the revocation check.
+
+### Available decorators
 
 | Decorator | Location | Purpose |
 |-----------|----------|---------|
-| `@Public()` | Resolver/Query | Bypasses JWT authentication |
+| `@Public()` | Resolver/Query | Bypasses authentication |
 | `@CurrentUser()` | Resolver parameter | Injects the decoded JWT payload |
 | `@RequestMeta()` | Resolver parameter | Injects correlation ID, IP address, and user agent |
+| `@RequirePermissions('perm1', 'perm2')` | Resolver/Query/Mutation | Requires specific permissions in the JWT `permissions` array |
+
+## Audit logging
+
+The `AuditModule` (global) provides an immutable audit trail for sensitive actions.
+
+### AuditService
+
+Any module can inject `AuditService` and call `log(event)` to record an action:
+
+```ts
+await this.auditService.log({
+  action: 'PERSON_CREATED',
+  userId: 'user-123',
+  targetType: 'Person',
+  targetId: '42',
+  metadata: { name: 'Ada' },
+  correlationId: 'corr-abc',
+});
+```
+
+Audit logging is **fire-and-forget** — failures are caught and logged but never propagate to the caller.
+
+### Scheduled cleanup
+
+A BullMQ cron job runs daily at **02:00 UTC** and deletes audit log entries older than the configured retention period (`AUDIT_RETENTION_DAYS`, default 90 days).
+
+### GraphQL query
+
+The `getAuditLogs` query requires the `audit:read` permission and supports filtering by `userId`, `action`, `targetType`, `dateFrom`, `dateTo`, and `first` (max items, default 50).
+
+### Predefined audit actions
+
+`PERSON_CREATED`, `PERSON_UPDATED`, `PERSON_DELETED`, `AUTH_LOGIN`, `AUTH_LOGOUT`, `AUTH_TOKEN_REVOKED`
+
+## Email infrastructure
+
+The `EmailModule` (global) provides queue-backed transactional email with dual transport:
+
+### How it works
+
+1. **`EmailService.send(email)`** enqueues a job to the `email-sending` BullMQ queue (fire-and-forget)
+2. **`EmailProcessor`** picks up jobs and sends via the configured transport
+3. Failed emails retry 3 times with exponential backoff (1s, 2s, 4s)
+
+### Transports
+
+| Environment | Transport | Configuration |
+|-------------|-----------|---------------|
+| Development | SMTP (MailHog) | `SMTP_HOST:SMTP_PORT` (default `localhost:1025`) |
+| Production | AWS SES | `AWS_SES_REGION`, `AWS_SES_ACCESS_KEY_ID`, `AWS_SES_SECRET_ACCESS_KEY` |
+
+The transport is selected at startup based on whether `AWS_SES_REGION` is set.
+
+### MailHog (development)
+
+MailHog captures all outgoing emails in development. Access the web UI at `http://localhost:8025` after running `npm run dev:up`.
+
+## Mapper layer
+
+The Person module uses an explicit mapper layer to decouple Prisma persistence types from GraphQL API types:
+
+- `src/person/mappers/prisma-person.mapper.ts` — maps `PrismaPerson` to GraphQL `Person`
+- `src/person/mappers/cursor-person.mapper.ts` — maps paginated Prisma results to `CursorPaginatedPersonResponse`
+
+The `PersonRepository` returns raw Prisma types. The `PersonService` uses mappers to transform repository output before returning to resolvers. This enables independent refactoring of either the database schema or the API shape.
 
 ## Prisma
 
 ### Schema
 
-Located at `prisma/schema.prisma`. Uses PostgreSQL with the `tracing` preview feature enabled for OpenTelemetry integration.
+Located at `prisma/schema.prisma`. Uses PostgreSQL.
 
-**Current model:**
+**Current models:**
 ```prisma
 model Person {
   id        Int      @id @default(autoincrement())
@@ -270,6 +369,25 @@ model Person {
 
   @@index([createdAt(sort: Desc), id(sort: Desc)])
 }
+
+model AuditLog {
+  id            Int      @id @default(autoincrement())
+  action        String
+  userId        String?  @map("user_id")
+  targetType    String?  @map("target_type")
+  targetId      String?  @map("target_id")
+  metadata      Json?
+  ipAddress     String?  @map("ip_address")
+  userAgent     String?  @map("user_agent")
+  correlationId String?  @map("correlation_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([targetType, targetId])
+  @@map("audit_log")
+}
 ```
 
 ### Repository pattern
@@ -278,6 +396,8 @@ Data access is encapsulated in repository classes. Services never import `Prisma
 
 ```
 PersonResolver → PersonService → PersonRepository → PrismaService
+                                 ↓ (mappers)
+                  prisma-person.mapper / cursor-person.mapper
 ```
 
 ### Prisma error codes
@@ -315,14 +435,17 @@ npm run prisma:ui
 npx prisma generate
 ```
 
-## Queues (Bull)
+## Queues (BullMQ)
 
-Redis-backed job queues using Bull, configured via `BullModule.forRootAsync` with `ConfigService` for environment-driven Redis connection.
+Redis-backed job queues using BullMQ, configured via `BullModule.forRootAsync` with `ConfigService` for environment-driven Redis connection. Default job options: 3 attempts with exponential backoff, keep last 100 completed and 500 failed jobs.
 
-### How it works
+### Active queues
 
-1. When `createPerson` is called, `PersonService` persists the record via `PersonRepository` and enqueues a `create-person` job to the `person` queue.
-2. `PersonConsumer` (annotated with `@Processor('person')`) picks up the job and processes it.
+| Queue | Producer | Consumer | Purpose |
+|-------|----------|----------|---------|
+| `person` | `PersonService` | `PersonConsumer` | Post-creation processing for new Person records |
+| `email-sending` | `EmailService` | `EmailProcessor` | Async email delivery (SMTP/SES) |
+| `audit-cleanup` | `AuditCronRegistrar` (cron) | `AuditCleanupProcessor` | Daily cleanup of expired audit logs |
 
 ### Adding a new queue
 
@@ -346,15 +469,12 @@ async someFunction() {
 **Consume messages:**
 ```ts
 @Processor('topic-name')
-export class ExampleConsumer {
-  @Process('message-key')
-  async responder(job: Job<unknown>) {
+export class ExampleConsumer extends WorkerHost {
+  async process(job: Job<unknown>) {
     return job.data;
   }
 }
 ```
-
-See also: [NestJS Queues docs](https://docs.nestjs.com/techniques/queues#queues)
 
 ## Health check
 
@@ -365,6 +485,33 @@ See also: [NestJS Queues docs](https://docs.nestjs.com/techniques/queues#queues)
 | HTTP Ping | Verifies external connectivity by pinging `https://google.com` |
 | Prisma | Verifies database connectivity via `PrismaService` |
 
+## Security hardening
+
+### Production enforcement (Zod config validation)
+
+The following constraints are enforced when `NODE_ENV=production`. The application fails to start with a clear error message if any constraint is violated:
+
+| Constraint | Rule |
+|------------|------|
+| `JWT_SECRET` | Must be at least 32 characters |
+| `FRONTEND_ORIGINS` | Must be non-empty; each origin must be a valid URL |
+| `AWS_SES_REGION` | Required for email delivery |
+| `LOG_LEVEL` | Cannot be `debug` or `verbose` (must be `info`, `warn`, or `error`) |
+
+These rules do not apply in `development` or `test` environments.
+
+### ValidationPipe
+
+The global `ValidationPipe` in `main.ts` is configured with:
+- `whitelist: true` — strips unknown properties from incoming DTOs
+- `forbidNonWhitelisted: true` — rejects requests with unknown properties
+- `transform: true` — auto-transforms payloads to DTO class instances
+- `disableErrorMessages: true` in production — clients get generic 400 errors; details are logged server-side
+
+### CORS validation utility
+
+`src/common/utils/cors.utils.ts` provides `parseCorsOrigins()` and `validateCorsOrigin()` for parsing and validating CORS origin strings at startup.
+
 ## Logging
 
 Winston replaces the default NestJS logger globally. Two transports are configured:
@@ -372,7 +519,7 @@ Winston replaces the default NestJS logger globally. Two transports are configur
 1. **Console transport**: Timestamps, millisecond durations, NestJS-like colored format with pretty printing.
 2. **OpenTelemetry transport**: Custom `OpenTelemetryTransport` that forwards logs to the OTLP log exporter with severity mapping (`error` → `ERROR`, `warn` → `WARN`, `info` → `INFO`, `debug` → `DEBUG`, `verbose`/`silly` → `TRACE`).
 
-**Default log level**: `debug`
+**Default log level**: `debug` (must be `info` or higher in production)
 
 **Usage:**
 ```ts
@@ -401,7 +548,7 @@ Enabled via `@opentelemetry/auto-instrumentations-node` with the following confi
 - **HTTP instrumentation**: enabled, with ignored paths: `/metrics`, `/traces`, `/logs`, `/api/health`
 - **FS instrumentation**: disabled (noisy)
 - **Winston instrumentation**: enabled, enriches log records with service metadata
-- **Prisma tracing**: enabled via preview feature + custom middleware spans
+- **Prisma tracing**: enabled via custom middleware spans
 
 ### Resource attributes
 
@@ -502,7 +649,9 @@ Unit tests match `src/**/*.spec.ts`.
 
 ### E2E tests
 ```bash
-npm run test:e2e
+npm run test:e2e:up      # Start test infrastructure
+npm run test:e2e         # Run E2E tests
+npm run test:e2e:down    # Stop test infrastructure
 ```
 
 E2E tests match `test/**/*.e2e-spec.ts`. The test setup (`test/setup-e2e.ts`):
@@ -514,10 +663,23 @@ E2E tests match `test/**/*.e2e-spec.ts`. The test setup (`test/setup-e2e.ts`):
 - `test/factory/create-test-module.ts`: Creates a NestJS testing module with `AppModule`, initializes the app with `ValidationPipe`, and provides `prisma` and `app` instances for test use.
 - `test/factory/person.factory.ts`: Helper for creating test `Person` records via Prisma.
 
-**Current unit test coverage:**
-- Config validation (15 tests)
-- Cursor utils: encode/decode round-trip, error handling (9 tests)
+**Current unit test coverage (18 test files, 117 tests):**
+- Config validation — production enforcement, defaults, type coercion (22 tests)
+- Gateway auth guard — header parsing, revoked token rejection, federation bypass (14 tests)
+- Permissions guard — permission matching (7 tests)
+- Token revocation service — revoke, isRevoked, fail-open (6 tests)
+- Audit service — log success, fire-and-forget failure handling (3 tests)
+- Audit cleanup processor — retention calculation, deletion (3 tests)
+- Audit resolver — filtered query, default filter (2 tests)
+- Email service — queue enqueue, retry config (3 tests)
+- Email processor — send, re-throw on failure, transport selection (5 tests)
+- Cache service — get, set, del (5 tests)
+- Person mappers — field mapping, pagination mapping (7 tests)
+- CORS utils — parse origins, validate URLs (10 tests)
+- Cursor utils — encode/decode round-trip, error handling (9 tests)
 - Email masking utility (5 tests)
+- JWT payload type guard (15 tests)
+- User reference resolver (1 test)
 
 **Current E2E test coverage (Person):**
 - Query all people with default cursor pagination (public, no auth)
@@ -534,8 +696,8 @@ E2E tests match `test/**/*.e2e-spec.ts`. The test setup (`test/setup-e2e.ts`):
 
 CORS is configured in `main.ts` with environment-aware behavior:
 
-- **Development**: all origins are allowed
-- **Production**: only origins listed in `FRONTEND_ORIGINS` are allowed (comma-separated). The service throws an error at startup if `FRONTEND_ORIGINS` is empty in production.
+- **Development/Test**: all origins are allowed
+- **Production**: only origins listed in `FRONTEND_ORIGINS` are allowed (comma-separated, each must be a valid URL). The config validation rejects invalid origin URLs at startup.
 
 Allowed methods: `GET`, `POST`, `OPTIONS`. Credentials are enabled.
 
@@ -562,16 +724,15 @@ Docker Compose provides the full development stack:
 | Service | Image | Port(s) | Purpose |
 |---------|-------|---------|---------|
 | **PostgreSQL** | `postgres:latest` | `5432` | Primary database |
-| **Redis** | `redis:7.2` | `6379` | Bull job queue backend |
+| **Redis** | `redis:7.2` | `6379` | BullMQ job queues, caching, token revocation |
 | **Jaeger** | `jaegertracing/all-in-one:latest` | `16686`, `4317`, `4318` | Trace collection and UI |
+| **MailHog** | `mailhog/mailhog:latest` | `1025` (SMTP), `8025` (Web UI) | Email capture for development |
 | **Prometheus** | `prom/prometheus:latest` | `9090` | Metrics collection |
 
 ```bash
 npm run dev:up     # Start all services
 npm run dev:down   # Stop all services
 ```
-
-Data is persisted via Docker volumes (`constellation-optl-data` for Postgres, `redis-optl-data` for Redis).
 
 ## Infrastructure (Terraform)
 
@@ -618,16 +779,45 @@ terraform init && terraform apply
 constellation-service/
 ├── src/
 │   ├── main.ts                        # Bootstrap, CORS, validation pipe, Helmet
-│   ├── app.module.ts                  # Root module (GraphQL, Prisma, Bull, JWT, Winston, Throttler)
+│   ├── app.module.ts                  # Root module (GraphQL, Prisma, BullMQ, Winston, Throttler)
 │   ├── schema.gql                     # Auto-generated Federation SDL
 │   ├── person/
 │   │   ├── person.module.ts           # Person module registration
 │   │   ├── person.resolver.ts         # GraphQL resolver (queries, mutations, reference)
 │   │   ├── person.service.ts          # Business logic + queue producer
-│   │   ├── person.repository.ts       # Prisma data access layer
-│   │   ├── person.consumer.ts         # Bull queue consumer
+│   │   ├── person.repository.ts       # Prisma data access layer (returns raw Prisma types)
+│   │   ├── person.consumer.ts         # BullMQ queue consumer
 │   │   ├── person.types.ts            # GraphQL ObjectType (federation entity)
-│   │   └── person.dto.ts              # Input types with validation
+│   │   ├── person.dto.ts              # Input types with validation
+│   │   ├── dto/
+│   │   │   └── create-person.result.ts # Union result type
+│   │   └── mappers/
+│   │       ├── prisma-person.mapper.ts       # Prisma → GraphQL Person
+│   │       └── cursor-person.mapper.ts       # Prisma → CursorPaginatedPersonResponse
+│   ├── auth/
+│   │   ├── auth.module.ts             # Global auth module
+│   │   └── token-revocation.service.ts # Redis-backed JTI blacklist
+│   ├── audit/
+│   │   ├── audit.module.ts            # Global audit module
+│   │   ├── audit.service.ts           # Fire-and-forget audit logging
+│   │   ├── audit.repository.ts        # Prisma data access for AuditLog
+│   │   ├── audit.resolver.ts          # getAuditLogs query (requires audit:read)
+│   │   ├── audit.types.ts             # GraphQL types (AuditLogType, AuditLogFilterInput)
+│   │   ├── audit-cleanup.processor.ts # BullMQ processor for retention cleanup
+│   │   ├── audit-cron.registrar.ts    # Registers daily cleanup cron at 02:00 UTC
+│   │   └── types/
+│   │       ├── audit-event.types.ts   # AuditEvent type
+│   │       ├── audit-action.types.ts  # AuditAction string literal union
+│   │       └── audit-log-filter.types.ts # AuditLogFilter type
+│   ├── email/
+│   │   ├── email.module.ts            # Global email module
+│   │   ├── email.service.ts           # Queue-backed send (fire-and-forget)
+│   │   ├── email.processor.ts         # BullMQ processor (SMTP/SES dual transport)
+│   │   └── types/
+│   │       └── send-email-job.types.ts # SendEmailJob type
+│   ├── cache/
+│   │   ├── cache.module.ts            # Global cache module (Redis via Keyv)
+│   │   └── cache.service.ts           # get/set/del wrapper
 │   ├── common/
 │   │   ├── dto/
 │   │   │   ├── cursor-pagination.args.ts           # CursorPaginationArgs (first/after)
@@ -636,7 +826,8 @@ constellation-service/
 │   │   │   └── decoded-cursor.types.ts  # Cursor type definition
 │   │   ├── utils/
 │   │   │   ├── cursor.utils.ts          # Cursor encode/decode
-│   │   │   └── mask-email.ts            # Email masking for logs
+│   │   │   ├── mask-email.ts            # Email masking for logs
+│   │   │   └── cors.utils.ts            # CORS origin parsing and validation
 │   │   ├── validators/
 │   │   │   ├── match.validator.ts       # @Match('field') decorator
 │   │   │   └── json-object.validator.ts # @IsJsonObject() validator
@@ -644,27 +835,36 @@ constellation-service/
 │   │   │   └── gql-throttler.guard.ts   # GraphQL-aware throttler guard
 │   │   ├── filters/
 │   │   │   └── global-exception.filter.ts # Global HTTP exception filter
+│   │   ├── graphql/types/
+│   │   │   ├── field-error.type.ts      # FieldError GraphQL type
+│   │   │   └── validation-error.type.ts # ValidationError GraphQL type
 │   │   └── middleware/
 │   │       └── correlation-id.middleware.ts # Correlation ID + OTEL span tagging
 │   ├── graphql/
 │   │   ├── formatError.ts             # Custom GraphQL error formatting
-│   │   ├── types.ts                   # GraphQL type helpers
+│   │   ├── types.ts                   # JwtPayload type + isJwtPayload guard
 │   │   ├── decorators/
 │   │   │   ├── public.decorator.ts    # @Public() decorator for open endpoints
 │   │   │   ├── current-user.decorator.ts  # @CurrentUser() JWT payload injection
-│   │   │   └── request-meta.decorator.ts  # @RequestMeta() correlation ID, IP, user agent
+│   │   │   ├── request-meta.decorator.ts  # @RequestMeta() correlation ID, IP, user agent
+│   │   │   └── require-permissions.decorator.ts # @RequirePermissions() RBAC decorator
 │   │   ├── directives/
 │   │   │   ├── access-control.directive.ts  # @public/@private GraphQL directives
 │   │   │   └── schema-extension.ts          # Federation schema extensions
-│   │   └── guards/
-│   │       └── jwt-auth.guard.ts      # Global JWT auth guard
+│   │   ├── guards/
+│   │   │   ├── gateway-auth.guard.ts  # Federation auth guard + token revocation check
+│   │   │   └── permissions.guard.ts   # RBAC permissions guard
+│   │   └── entities/
+│   │       ├── user-reference.module.ts   # User stub for federation
+│   │       ├── user-reference.resolver.ts # resolveReference for User entity
+│   │       └── user-reference.types.ts    # User federation stub type
 │   ├── prisma/
 │   │   ├── prisma.module.ts           # Global Prisma module
 │   │   ├── prisma.service.ts          # PrismaClient + OTEL tracing middleware
 │   │   └── prisma-error-codes.ts      # Named Prisma error constants
 │   ├── config/
 │   │   ├── configuration.ts           # Typed configuration factory
-│   │   └── config.validation.ts       # Zod-based env validation
+│   │   └── config.validation.ts       # Zod-based env validation with production enforcement
 │   ├── health/
 │   │   ├── health.module.ts           # Health module
 │   │   ├── health.controller.ts       # GET /health endpoint
@@ -673,7 +873,7 @@ constellation-service/
 │       ├── tracer.ts                  # OpenTelemetry SDK configuration
 │       └── winston.transporter.ts     # Custom Winston → OTLP transport
 ├── prisma/
-│   ├── schema.prisma                  # Database schema
+│   ├── schema.prisma                  # Database schema (Person + AuditLog)
 │   ├── seed.ts                        # Database seeding
 │   └── migrations/                    # Migration history
 ├── test/
@@ -689,10 +889,10 @@ constellation-service/
 │   ├── outputs.tf                     # Terraform outputs
 │   └── bootstrap/                     # S3 state bucket setup
 ├── .github/workflows/ci.yml          # CI pipeline
-├── docker-compose.yml                 # Dev infrastructure
+├── docker-compose.yml                 # Dev infrastructure (Postgres, Redis, Jaeger, MailHog, Prometheus)
+├── docker-compose.test.yml            # E2E test infrastructure
 ├── dockerfile                         # Multi-stage Docker build
 ├── prometheus.yml                     # Prometheus scrape config
-├── constellation.config.json          # Constellation config
 ├── .eslintrc.js                       # ESLint config
 ├── .prettierrc                        # Prettier config (single quotes, trailing commas)
 ├── .nvmrc                             # Node version (20)
@@ -706,24 +906,35 @@ constellation-service/
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `SERVICE_PORT` | No | `3000` | Port the service listens on |
+| `NODE_ENV` | No | `development` | Environment (`production`, `development`, `test`) |
+| `LOG_LEVEL` | No | `debug` | Log level (production: must be `info`, `warn`, or `error`) |
+| `FEDERATION_ENABLED` | No | `false` | Enable Apollo Federation v2 mode |
+| `JWT_SECRET` | Prod | — | JWT signing secret (production: min 32 chars) |
+| `DATABASE_URL` | Yes | — | Full Prisma connection string |
 | `DATABASE_HOST` | No | `localhost` | PostgreSQL host |
 | `DATABASE_PORT` | No | `5432` | PostgreSQL port |
 | `DATABASE_USER` | No | `postgres` | PostgreSQL user |
 | `DATABASE_PASSWORD` | Yes | — | PostgreSQL password |
 | `DATABASE_NAME` | Yes | — | Database name |
-| `DATABASE_URL` | Yes | — | Full Prisma connection string |
 | `REDIS_HOST` | No | `localhost` | Redis host |
 | `REDIS_PORT` | No | `6379` | Redis port |
 | `REDIS_PASSWORD` | No | — | Redis password |
-| `JWT_SECRET` | Yes | `your-secret-key-change-in-production` | JWT signing secret |
-| `FRONTEND_ORIGINS` | Prod only | — | Comma-separated CORS origins |
-| `NODE_ENV` | No | — | Environment (`production`, `development`) |
+| `CACHE_DEFAULT_TTL_SECONDS` | No | `60` | Cache TTL in seconds |
+| `AUDIT_RETENTION_DAYS` | No | `90` | Days to keep audit log entries before cleanup |
+| `SMTP_HOST` | No | `localhost` | SMTP host for development email |
+| `SMTP_PORT` | No | `1025` | SMTP port (MailHog default) |
+| `EMAIL_FROM_ADDRESS` | No | `noreply@constellation.local` | Sender email address |
+| `EMAIL_FROM_NAME` | No | `Constellation Service` | Sender display name |
+| `AWS_SES_REGION` | Prod | — | AWS SES region (triggers SES transport when set) |
+| `AWS_SES_ACCESS_KEY_ID` | Prod | — | AWS SES access key |
+| `AWS_SES_SECRET_ACCESS_KEY` | Prod | — | AWS SES secret key |
+| `FRONTEND_ORIGINS` | Prod | — | Comma-separated CORS origins (must be valid URLs in production) |
 | `OTEL_SERVICE_NAME` | No | `constellation-service` | OpenTelemetry service name |
 | `OTEL_SERVICE_NAMESPACE` | No | `constellation` | OpenTelemetry namespace |
 | `OTEL_SERVICE_VERSION` | No | `1.0.0` | OpenTelemetry service version |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | `http://localhost:4318` | OTLP exporter endpoint (alternative to `OTLP_ENDPOINT`) |
-| `OTLP_ENDPOINT` | No | — | OTLP gateway URL (e.g., Grafana Cloud `https://otlp-gateway-prod-<region>.grafana.net/otlp`) |
-| `OTLP_AUTH_TOKEN` | No | — | OTLP `Authorization` header value (e.g., `Basic base64(instanceId:apiToken)` for Grafana Cloud) |
-| `OTLP_HOST` | No | `localhost` | Local OTLP collector host (used when `OTLP_ENDPOINT` is not set) |
-| `OTLP_PORT` | No | `4318` | Local OTLP collector port (used when `OTLP_ENDPOINT` is not set) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | `http://localhost:4318` | OTLP exporter endpoint |
+| `OTLP_ENDPOINT` | No | — | OTLP gateway URL (e.g., Grafana Cloud) |
+| `OTLP_AUTH_TOKEN` | No | — | OTLP Authorization header value |
+| `OTLP_HOST` | No | `localhost` | Local OTLP collector host |
+| `OTLP_PORT` | No | `4318` | Local OTLP collector port |
 | `DEPLOYMENT_ENVIRONMENT` | No | `development` | Deployment environment label |
