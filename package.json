@@ -5,6 +5,9 @@
   "author": "{{projectAuthor}}",
   "private": true,
   "license": "UNLICENSED",
+  "overrides": {
+    "fast-xml-parser": ">=5.7.0"
+  },
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
@@ -90,8 +93,8 @@
     "@types/node": "^22.0.0",
     "@types/nodemailer": "^8.0.0",
     "@types/supertest": "^6.0.0",
-    "@typescript-eslint/eslint-plugin": "^6.0.0",
-    "@typescript-eslint/parser": "^6.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.59.0",
+    "@typescript-eslint/parser": "^8.59.0",
     "dotenv": "^17.4.2",
     "eslint": "^8.42.0",
     "eslint-config-prettier": "^9.0.0",

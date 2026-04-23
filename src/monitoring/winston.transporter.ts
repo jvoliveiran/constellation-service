@@ -1,5 +1,5 @@
 import { SeverityNumber } from '@opentelemetry/api-logs';
-import TransportStream = require('winston-transport');
+import TransportStream from 'winston-transport';
 
 export class OpenTelemetryTransport extends TransportStream {
   private loggerProvider: any;
