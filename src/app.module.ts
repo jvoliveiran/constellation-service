@@ -44,7 +44,8 @@ import { EmailModule } from './email/email.module';
 import { validateConfig } from './config/config.validation';
 import { configuration } from './config/configuration';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
-import depthLimit from 'graphql-depth-limit';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+import depthLimit = require('graphql-depth-limit');
 import {
   fieldExtensionsEstimator,
   getComplexity,
