@@ -8,9 +8,60 @@ directive @private on FIELD_DEFINITION | OBJECT
 """Marks a field or type as publicly accessible without authentication"""
 directive @public on FIELD_DEFINITION | OBJECT
 
+"""An immutable record of a sensitive action performed in the system."""
+type AuditLog {
+  """The action that was performed (e.g. PERSON_CREATED)."""
+  action: String!
+  correlationId: String
+  createdAt: DateTime!
+  id: Int!
+  ipAddress: String
+
+  """Additional context about the action."""
+  metadata: JSON
+
+  """The identifier of the targeted entity."""
+  targetId: String
+
+  """The type of entity targeted by the action."""
+  targetType: String
+  userAgent: String
+
+  """The user who performed the action."""
+  userId: String
+}
+
+"""Filters for querying audit log entries."""
+input AuditLogFilterInput {
+  """Filter by action name."""
+  action: String
+
+  """Start of the date range (inclusive)."""
+  dateFrom: DateTime
+
+  """End of the date range (inclusive)."""
+  dateTo: DateTime
+
+  """Maximum number of entries to return. Defaults to 50."""
+  first: Int
+
+  """Filter by target entity type."""
+  targetType: String
+
+  """Filter by user ID."""
+  userId: String
+}
+
 input CreatePersonInput {
   age: Int!
   name: String!
+}
+
+union CreatePersonResult = CreatePersonSuccess | ValidationErrorResult
+
+"""Returned when a person is created successfully."""
+type CreatePersonSuccess {
+  person: Person!
 }
 
 type CursorPaginatedPersonResponse {
@@ -36,8 +87,23 @@ A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date
 """
 scalar DateTime
 
+"""A validation error on a specific input field."""
+type FieldError {
+  """The input field that failed validation."""
+  field: String!
+
+  """Human-readable error message."""
+  message: String!
+}
+
+"""
+The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
+"""
+scalar JSON
+
 type Mutation {
-  createPerson(person: CreatePersonInput!): Person!
+  """Create a new person."""
+  createPerson(person: CreatePersonInput!): CreatePersonResult!
 }
 
 type Person {
@@ -57,5 +123,17 @@ type Query {
     """Number of items to return. Min 1, max 100."""
     first: Int! = 20
   ): CursorPaginatedPersonResponse!
+
+  """Retrieve audit log entries with optional filters."""
+  getAuditLogs(filter: AuditLogFilterInput): [AuditLog!]!
   getOne(id: Int!): Person!
+}
+
+"""Returned when input validation fails."""
+type ValidationErrorResult {
+  """Per-field validation errors."""
+  fieldErrors: [FieldError!]!
+
+  """Summary error message."""
+  message: String!
 }
