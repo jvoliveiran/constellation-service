@@ -1,5 +1,6 @@
 import { SeverityNumber } from '@opentelemetry/api-logs';
-import TransportStream from 'winston-transport';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+import TransportStream = require('winston-transport');
 
 export class OpenTelemetryTransport extends TransportStream {
   private loggerProvider: any;
