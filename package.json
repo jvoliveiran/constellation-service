@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@apollo/subgraph": "^2.6.3",
+    "@as-integrations/express5": "^1.1.2",
     "@aws-sdk/client-ses": "^3.1033.0",
     "@keyv/redis": "^5.1.6",
     "@nestjs/apollo": "^13.3.0",
