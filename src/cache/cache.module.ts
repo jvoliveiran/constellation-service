@@ -38,7 +38,20 @@ const cacheModuleOptions: CacheModuleAsyncOptions = {
       },
     });
 
-    await adapter.getClient();
+    const EAGER_CONNECT_TIMEOUT_MS = 5000;
+    try {
+      await Promise.race([
+        adapter.getClient(),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error('Cache Redis connect timeout')),
+            EAGER_CONNECT_TIMEOUT_MS,
+          ),
+        ),
+      ]);
+    } catch {
+      // Connection failed or timed out — cache will connect in the background
+    }
 
     const keyv = new Keyv(adapter, { useKeyPrefix: false });
     keyv.namespace = undefined;
