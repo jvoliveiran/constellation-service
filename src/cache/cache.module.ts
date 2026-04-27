@@ -10,7 +10,7 @@ import { CacheService } from './cache.service';
 
 const cacheModuleOptions: CacheModuleAsyncOptions = {
   imports: [ConfigModule],
-  useFactory: (configService: ConfigService) => {
+  useFactory: async (configService: ConfigService) => {
     const isTest = configService.get('app.nodeEnv') === 'test';
 
     if (isTest) {
@@ -28,13 +28,23 @@ const cacheModuleOptions: CacheModuleAsyncOptions = {
     const defaultTtlSeconds =
       configService.get<number>('cache.defaultTtlSeconds') ?? 60;
 
+    const adapter = new KeyvRedis({
+      url: redisUrl,
+      socket: {
+        connectTimeout: 5000,
+        reconnectStrategy(retries: number) {
+          return Math.min(2 ** retries * 100, 2000);
+        },
+      },
+    });
+
+    await adapter.getClient();
+
+    const keyv = new Keyv(adapter, { useKeyPrefix: false });
+    keyv.namespace = undefined;
+
     return {
-      stores: [
-        new Keyv({
-          store: new KeyvRedis(redisUrl),
-          namespace: 'constellation',
-        }),
-      ],
+      stores: [keyv],
       ttl: defaultTtlSeconds * 1000,
     };
   },

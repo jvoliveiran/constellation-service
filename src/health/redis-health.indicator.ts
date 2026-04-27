@@ -22,7 +22,6 @@ export class RedisHealthIndicator
       password: this.configService.get<string>('redis.password', ''),
       maxRetriesPerRequest: 1,
       connectTimeout: 3000,
-      lazyConnect: true,
     });
   }
 
