@@ -15,12 +15,6 @@ export const configuration = () => ({
     port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
     password: process.env.REDIS_PASSWORD || '',
   },
-  cache: {
-    defaultTtlSeconds: parseInt(
-      process.env.CACHE_DEFAULT_TTL_SECONDS || '60',
-      10,
-    ),
-  },
   otel: {
     serviceName: process.env.OTEL_SERVICE_NAME || 'constellation-service',
     serviceNamespace: process.env.OTEL_SERVICE_NAMESPACE || 'constellation',

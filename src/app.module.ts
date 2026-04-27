@@ -37,7 +37,6 @@ import { PermissionsGuard } from './graphql/guards/permissions.guard';
 import { UserReferenceModule } from './graphql/entities/user-reference.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { GqlThrottlerGuard } from './common/guards/gql-throttler.guard';
-import { CacheModule } from './cache/cache.module';
 import { AuthModule } from './auth/auth.module';
 import { AuditModule } from './audit/audit.module';
 import { EmailModule } from './email/email.module';
@@ -196,7 +195,6 @@ function buildGraphQLModule(): DynamicModule {
     ThrottlerModule.forRoot({
       throttlers: [{ ttl: 60000, limit: 100 }],
     }),
-    CacheModule,
     AuthModule,
     AuditModule,
     EmailModule,
